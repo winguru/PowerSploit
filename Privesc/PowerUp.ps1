@@ -877,7 +877,7 @@ a modifiable path.
                                     # if the path doesn't exist, check if the parent folder allows for modification
                                     try {
                                         $ParentPath = (Split-Path -Path $TempPath -Parent -ErrorAction SilentlyContinue).Trim()
-                                        if ($ParentPath -and ($ParentPath -ne '','C:\') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
+                                        if ($ParentPath -and (-not $ParentPath -in '','C:\') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
                                             $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                                         }
                                     }
@@ -2078,7 +2078,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
 
             $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
 
-            $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '')} | Foreach-Object {
+            $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and (-not $_.ModifiablePath -in '','C:\')} | Foreach-Object {
                 $CanRestart = Test-ServiceDaclPermission -PermissionSet 'Restart' -Name $Service.name
                 $Out = New-Object PSObject
                 $Out | Add-Member Noteproperty 'ServiceName' $Service.name
