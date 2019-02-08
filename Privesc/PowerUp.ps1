@@ -3079,11 +3079,11 @@ https://www.mandiant.com/blog/malware-persistence-windows-registry/
                         $ModulePath = "$BasePath\$($Module.ModuleName)"
 
                         # if the module path doesn't exist in the process base path folder
-                        if ((-not $ModulePath.Contains('C:\Windows\System32')) -and (-not (Test-Path -Path $ModulePath)) -and ($KnownDLLs -NotContains $Module.ModuleName)) {
+                        if ((-not $ModulePath.Contains("$Env:SystemRoot\System32")) -and (-not (Test-Path -Path $ModulePath)) -and ($KnownDLLs -NotContains $Module.ModuleName)) {
 
                             $Exclude = $False
 
-                            if ($PSBoundParameters['ExcludeWindows'] -and $ModulePath.Contains('C:\Windows')) {
+                            if ($PSBoundParameters['ExcludeWindows'] -and $ModulePath.Contains($Env:SystemRoot)) {
                                 $Exclude = $True
                             }
 
@@ -3851,7 +3851,7 @@ Author: Antti Rantasaari - 2014, NetSPI
         $Null = $DataTable.Columns.Add('encr')
 
         # Get list of virtual directories in IIS
-        C:\Windows\System32\InetSRV\appcmd.exe list vdir /text:physicalpath |
+        & "$Env:SystemRoot\System32\InetSRV\appcmd.exe list vdir /text:physicalpath" |
         ForEach-Object {
 
             $CurrentVdir = $_
