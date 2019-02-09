@@ -20,12 +20,12 @@ This is probably most useful for injecting backdoors in SYSTEM processes in Sess
 from the DLL. The script doesn't wait for the DLL to complete execution, and doesn't make any effort to cleanup memory in the
 remote process.
 
-PowerSploit Function: Invoke-ReflectivePEInjection  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Code review and modifications: Matt Graeber, Twitter: @mattifestation  
-License: BSD 3-Clause  
-Required Dependencies: None  
-Optional Dependencies: None  
+PowerSploit Function: Invoke-ReflectivePEInjection
+Author: Joe Bialek, Twitter: @JosephBialek
+Code review and modifications: Matt Graeber, Twitter: @mattifestation
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 

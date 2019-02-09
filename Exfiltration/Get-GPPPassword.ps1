@@ -4,11 +4,11 @@ function Get-GPPPassword {
 
 Retrieves the plaintext password and other information for accounts pushed through Group Policy Preferences.
 
-PowerSploit Function: Get-GPPPassword  
-Author: Chris Campbell (@obscuresec)  
-License: BSD 3-Clause  
-Required Dependencies: None  
-Optional Dependencies: None  
+PowerSploit Function: Get-GPPPassword
+Author: Chris Campbell (@obscuresec)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -118,7 +118,7 @@ http://rewtdance.blogspot.com/2012/06/exploiting-windows-2008-group-policy.html
             }
 
             $Base64Decoded = [Convert]::FromBase64String($Cpassword)
-            
+
             # Make sure System.Core is loaded
             [System.Reflection.Assembly]::LoadWithPartialName("System.Core") |Out-Null
 

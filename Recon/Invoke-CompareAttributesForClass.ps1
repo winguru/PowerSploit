@@ -34,7 +34,7 @@
         Write-verbose "Attempting to find all attributes for the AD Object: $($ADObj.Name)"
         $AllAttributes = ForEach ($Class in $AllClasses)
         {
-            $ClassInfo = Get-ADObject -SearchBase "$((Get-ADRootDSE).SchemaNamingContext)" -Filter {lDAPDisplayName -eq $Class} -properties $attributAttributes 
+            $ClassInfo = Get-ADObject -SearchBase "$((Get-ADRootDSE).SchemaNamingContext)" -Filter {lDAPDisplayName -eq $Class} -properties $attributAttributes
             ForEach ($attribute in $attributAttributes)
             {
                 $ListOfAttributesFromAD += $ClassInfo.$attribute
@@ -62,11 +62,11 @@ function Invoke-CompareAttributesForClass
 .DESCRIPTION
     Compares list of attributes with active attributes in Active Directory.
     This function is used to spot unusal attributes.
-    
+
     Example where an attribute is found in AD and not in compare list:
-    InputObject                   SideIndicator                                              
-    -----------                   -------------                                              
-    TopSecretAttribute            =>                                                         
+    InputObject                   SideIndicator
+    -----------                   -------------
+    TopSecretAttribute            =>
 
 
 .EXAMPLE
@@ -529,10 +529,10 @@ function Invoke-CompareAttributesForClass
     $Compare = Compare-Object -ReferenceObject $UserAttributelist -DifferenceObject $UserAttributeListFromAD
     Write-Output $Compare
         }
-        
+
         if($Class -eq "computer"){
                 $ComputerAttributeListFromAD = Get-AllAttributesForClass -Class computer
-        
+
         $ComputerAttributeList = @(
         "accountExpires",
         "aCSPolicyName",
@@ -1041,4 +1041,3 @@ function Invoke-CompareAttributesForClass
     }
     }
 }
-    

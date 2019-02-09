@@ -4,9 +4,9 @@ function Get-System {
 
 GetSystem functionality inspired by Meterpreter's getsystem.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 

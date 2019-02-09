@@ -741,9 +741,9 @@ function Get-ModifiablePath {
 Parses a passed string containing multiple possible file/folder paths and returns
 the file paths where the current user has modification rights.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -945,9 +945,9 @@ function Get-TokenInformation {
 Helpers that returns token groups or privileges for a passed process/thread token.
 Used by Get-ProcessTokenGroup and Get-ProcessTokenPrivilege.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1124,9 +1124,9 @@ function Get-ProcessTokenGroup {
 
 Returns all SIDs that the current token context is a part of, whether they are disabled or not.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1244,9 +1244,9 @@ function Get-ProcessTokenPrivilege {
 
 Returns all privileges for the current (or specified) process ID.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1424,9 +1424,9 @@ function Get-ProcessTokenType {
 
 Returns the token type and impersonation level.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1523,9 +1523,9 @@ function Enable-Privilege {
 
 Enables a specific privilege for the current process.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1620,9 +1620,9 @@ function Add-ServiceDacl {
 
 Adds a Dacl field to a service object returned by Get-Service.
 
-Author: Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1736,9 +1736,9 @@ function Set-ServiceBinaryPath {
 
 Sets the binary path for a service to a specified value.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1857,9 +1857,9 @@ function Test-ServiceDaclPermission {
 Tests one or more passed services or service names against a given permission set,
 returning the service objects where the current user have the specified permissions.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: Add-ServiceDacl  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: Add-ServiceDacl
 
 .DESCRIPTION
 
@@ -2037,9 +2037,9 @@ function Get-UnquotedService {
 Returns the name and binary path for services with unquoted paths
 that also have a space in the name.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath, Test-ServiceDaclPermission  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath, Test-ServiceDaclPermission
 
 .DESCRIPTION
 
@@ -2107,9 +2107,9 @@ function Get-ModifiableServiceFile {
 
 Enumerates all services and returns vulnerable service files.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Test-ServiceDaclPermission, Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -2166,9 +2166,9 @@ function Get-ModifiableService {
 
 Enumerates all services and returns services for which the current user can modify the binPath.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ServiceDetail  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Test-ServiceDaclPermission, Get-ServiceDetail
 
 .DESCRIPTION
 
@@ -2214,9 +2214,9 @@ function Get-ServiceDetail {
 Returns detailed information about a specified service by querying the
 WMI win32_service class for the specified service name.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -2287,9 +2287,9 @@ function Invoke-ServiceAbuse {
 Abuses a function the current user has configuration rights on in order
 to add a local administrator or execute a custom command.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Set-ServiceBinaryPath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Set-ServiceBinaryPath
 
 .DESCRIPTION
 
@@ -2524,9 +2524,9 @@ function Write-ServiceBinary {
 Patches in the specified command to a pre-compiled C# service executable and
 writes the binary out to the specified ServicePath location.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -2707,9 +2707,9 @@ function Install-ServiceBinary {
 Replaces the service binary for the specified service with one that executes
 a specified command as SYSTEM.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Get-ModifiablePath, Write-ServiceBinary  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Get-ModifiablePath, Write-ServiceBinary
 
 .DESCRIPTION
 
@@ -2876,9 +2876,9 @@ function Restore-ServiceBinary {
 
 Restores a service binary backed up by Install-ServiceBinary.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -2971,9 +2971,9 @@ function Find-ProcessDLLHijack {
 
 Finds all DLL hijack locations for currently running processes.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3128,9 +3128,9 @@ function Find-PathDLLHijack {
 
 Finds all directories in the system %PATH% that are modifiable by the current user.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3182,9 +3182,9 @@ function Write-HijackDll {
 Patches in the path to a specified .bat (containing the specified command) into a
 pre-compiled hijackable C++ DLL writes the DLL out to the specified ServicePath location.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3410,9 +3410,9 @@ function Get-RegistryAlwaysInstallElevated {
 
 Checks if any of the AlwaysInstallElevated registry keys are set.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3479,9 +3479,9 @@ function Get-RegistryAutoLogon {
 
 Finds any autologon credentials left in the registry.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3542,9 +3542,9 @@ function Get-ModifiableRegistryAutoRun {
 Returns any elevated system autoruns in which the current user can
 modify part of the path string.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3621,9 +3621,9 @@ function Get-ModifiableScheduledTaskFile {
 Returns scheduled tasks where the current user can modify any file
 in the associated task action string.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3702,9 +3702,9 @@ function Get-UnattendedInstallFile {
 Checks several locations for remaining unattended installation files,
 which may have deployment credentials.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .EXAMPLE
 
@@ -3762,9 +3762,9 @@ function Get-WebConfig {
 This script will recover cleartext and encrypted connection strings from all web.config
 files on the system. Also, it will decrypt them if needed.
 
-Author: Scott Sutherland, Antti Rantasaari  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Scott Sutherland, Antti Rantasaari
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3976,9 +3976,9 @@ function Get-ApplicationHost {
 
 Recovers encrypted application pool and virtual directory passwords from the applicationHost.config on the system.
 
-Author: Scott Sutherland  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Scott Sutherland
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4137,10 +4137,10 @@ function Get-SiteListPassword {
 Retrieves the plaintext passwords for found McAfee's SiteList.xml files.
 Based on Jerome Nokin (@funoverip)'s Python solution (in links).
 
-Author: Jerome Nokin (@funoverip)  
-PowerShell Port: @harmj0y  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Jerome Nokin (@funoverip)
+PowerShell Port: @harmj0y
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4338,9 +4338,9 @@ function Get-CachedGPPPassword {
 Retrieves the plaintext password and other information for accounts pushed through Group Policy Preferences and
 left in cached files on the host.
 
-Author: Chris Campbell (@obscuresec)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Chris Campbell (@obscuresec)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4548,9 +4548,9 @@ function Write-UserAddMSI {
 Writes out a precompiled MSI installer that prompts for a user/group addition.
 This function can be used to abuse Get-RegistryAlwaysInstallElevated.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4603,8 +4603,8 @@ function Invoke-EventVwrBypass {
 Bypasses UAC by performing an image hijack on the .msc file extension
 Only tested on Windows 7 and Windows 10
 
-Author: Matt Nelson (@enigma0x3)  
-License: BSD 3-Clause  
+Author: Matt Nelson (@enigma0x3)
+License: BSD 3-Clause
 Required Dependencies: None
 
 .PARAMETER Command
@@ -4662,7 +4662,7 @@ This will write out "Is Elevated: True" to C:\UACBypassTest.
             Write-Verbose "Started eventvwr.exe"
         }
 
-        #Sleep 5 seconds 
+        #Sleep 5 seconds
         Write-Verbose "Sleeping 5 seconds to trigger payload"
         if (-not $PSBoundParameters['WhatIf']) {
             Start-Sleep -Seconds 5
@@ -4690,9 +4690,9 @@ function Invoke-PrivescAudit {
 
 Executes all functions that check for various Windows privilege escalation opportunities.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4704,7 +4704,7 @@ String. Format to decide on what is returned from the command, an Object Array, 
 
 .PARAMETER HTMLReport
 
-DEPRECATED - Switch. Write a HTML version of the report to SYSTEM.username.html. 
+DEPRECATED - Switch. Write a HTML version of the report to SYSTEM.username.html.
 Superseded by the Format parameter.
 
 .EXAMPLE

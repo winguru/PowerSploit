@@ -5,10 +5,10 @@ function Invoke-WmiCommand {
 Executes a PowerShell ScriptBlock on a target computer using WMI as a
 pure C2 channel.
 
-Author: Matthew Graeber  
-License: BSD 3-Clause  
-Required Dependencies: None  
-Optional Dependencies: None  
+Author: Matthew Graeber
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 

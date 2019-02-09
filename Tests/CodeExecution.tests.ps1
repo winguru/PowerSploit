@@ -83,7 +83,7 @@ Describe 'Invoke-Shellcode' {
 
 		if ($NotepadProc.ReturnValue -ne 0) {
 			throw 'Could not start victim process: notepad.exe'
-		} 
+		}
 
 		$VictimPID = $NotepadProc.ProcessId
 
@@ -132,7 +132,7 @@ Describe 'Invoke-DllInjection' {
 		if (-not (Test-Path $AdvpackPath)) {
 			throw "$AdvpackPath does not exist on disk."
 		}
-		
+
 		$LoadedModule = Invoke-DllInjection -ProcessID $PID -Dll $AdvpackPath
 		$LoadedModule | Should Not BeNullOrEmpty
 
@@ -198,7 +198,7 @@ Describe 'Invoke-WmiCommand' {
 
 		It 'should execute a sample payload with explicit arguments locally and clean up properly' {
 			$Result = Invoke-WmiCommand -Payload $SamplePayload -RegistryHive $RegistryHive -RegistryKeyPath $KeyPath -RegistryPayloadValueName $RegistryPayloadValueName -RegistryResultValueName $RegistryResultValueName
-		
+
 			$Result | Should Not BeNullOrEmpty
 			$Result.PayloadOutput -is $SamplePayloadResultType | Should Be $True
 			$Result.PayloadOutput | Should Be $SamplePayloadResult
@@ -299,7 +299,7 @@ Describe 'Invoke-ReflectivePEInjection' {
 
 			if ($NotepadProc.ReturnValue -ne 0) {
 				throw 'Could not start victim process: notepad.exe'
-			} 
+			}
 
 			$VictimPID = $NotepadProc.ProcessId
 
