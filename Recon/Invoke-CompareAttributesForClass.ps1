@@ -1,4 +1,4 @@
-﻿function Get-AllAttributesForClass
+function Get-AllAttributesForClass
 {<#
 .Synopsis
    Gets all AD Schema attributes for class
