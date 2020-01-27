@@ -904,7 +904,9 @@ a modifiable path.
             $CandidatePaths | Sort-Object -Unique | ForEach-Object {
                 $CandidatePath = $_
                 try {
-                    Get-Acl -Path $CandidatePath | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
+                # ACLs with InheritOnly in PropagationFlags are useless, see
+                # https://docs.microsoft.com/en-us/previous-versions/dotnet/netframework-4.0/ms229747(v=vs.100)?redirectedfrom=MSDN
+                    Get-Acl -Path $CandidatePath | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow' -and $_.PropagationFlags -notmatch 'InheritOnly')} | ForEach-Object {
 
                         $FileSystemRights = $_.FileSystemRights.value__
 
