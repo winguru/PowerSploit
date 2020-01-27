@@ -4844,7 +4844,7 @@ detailing any discovered issues.
         $Results = . $Check.Command
         $Results | Where-Object {$_} | ForEach-Object {
             $_ | Add-Member Noteproperty 'Check' $Check.Type
-            if ($Check.AbuseScript){
+            if ($Check.PSObject.Properties.Name -match 'AbuseScript' -and $Check.AbuseScript){
                 $_ | Add-Member Noteproperty 'AbuseFunction' (. $Check.AbuseScript)
             }
         }
