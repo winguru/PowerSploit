@@ -763,6 +763,11 @@ The string path to parse for modifiable files. Required
 
 Switch. Treat all paths as literal (i.e. don't do 'tokenization').
 
+.PARAMETER Comprehensive
+
+Switch. Also look for the 'AppendData/AddSubdirectory' permission. This
+permission is often useless for privilege escalation.
+
 .EXAMPLE
 
 '"C:\Temp\blah.exe" -f "C:\Temp\config.ini"' | Get-ModifiablePath
@@ -801,7 +806,10 @@ a modifiable path.
 
         [Alias('LiteralPaths')]
         [Switch]
-        $Literal
+        $Literal,
+
+        [Switch]
+        $Comprehensive
     )
 
     BEGIN {
@@ -877,7 +885,7 @@ a modifiable path.
                                     # if the path doesn't exist, check if the parent folder allows for modification
                                     try {
                                         $ParentPath = (Split-Path -Path $TempPath -Parent -ErrorAction SilentlyContinue).Trim()
-                                        if ($ParentPath -and ($ParentPath -ne '','C:\') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
+                                        if ($ParentPath -and ($ParentPath -ne '') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
                                             $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                                         }
                                     }
@@ -903,7 +911,11 @@ a modifiable path.
                         $Permissions = $AccessMask.Keys | Where-Object { $FileSystemRights -band $_ } | ForEach-Object { $AccessMask[$_] }
 
                         # the set of permission types that allow for modification
-                        $Comparison = Compare-Object -ReferenceObject $Permissions -DifferenceObject @('GenericWrite', 'GenericAll', 'MaximumAllowed', 'WriteOwner', 'WriteDAC', 'WriteData/AddFile', 'AppendData/AddSubdirectory') -IncludeEqual -ExcludeDifferent
+                        $WantedPermissions = @('GenericWrite', 'GenericAll', 'MaximumAllowed', 'WriteOwner', 'WriteDAC', 'WriteData/AddFile')
+                        if ($Comprehensive) {
+                            $WantedPermissions += 'AppendData/AddSubdirectory'
+                        }
+                        $Comparison = Compare-Object -ReferenceObject $Permissions -DifferenceObject $WantedPermissions -IncludeEqual -ExcludeDifferent
 
                         if ($Comparison) {
                             if ($_.IdentityReference -notmatch '^S-1-5.*') {
