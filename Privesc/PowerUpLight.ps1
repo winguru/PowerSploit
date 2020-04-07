@@ -214,3 +214,188 @@ a modifiable path.
         }
     }
 }
+
+
+function Get-ModifiableReg {
+<#
+.SYNOPSIS
+
+Takes multiple strings containing registry paths and returns
+the registry paths where the current user has modification rights.
+
+Author: Tobias Neitzel (@qtc-de)  
+License: BSD 3-Clause  
+Required Dependencies: None  
+
+.DESCRIPTION
+
+Takes a number of registry paths and enumerates the ACLs on them. Any path that
+the current user has modification rights on is returned in a custom object that contains
+the modifiable path, the owner, associated permission set, and the IdentityReference with 
+the specified rights. The SID of the current user and any group he/she are a part of are 
+used as the comparison set against the parsed path DACLs.
+
+.PARAMETER Path
+
+The registry path. Required
+
+.EXAMPLE
+
+"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\ASP.NET_4.0.30319\Names" | Get-ModifiableReg
+
+ModifiablePath                                                                   Owner                   IdentityReference                 Permissions
+--------------                                                                   -----                   -----------------                 -----------
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\ASP.NET_4.0.30319\Names     NT AUTHORITY\SYSTEM     BUILTIN\Performance Log Users     {CreateSubKey, SetValue, ReadPermissions, Notify...}
+
+
+.EXAMPLE
+
+Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Services\ -Recurse -ErrorAction SilentlyContinue | Get-ModifiableReg
+
+ModifiablePath                                                                                    Owner                       IdentityReference                Permissions
+--------------                                                                                    -----                       -----------------                -----------
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\ASP.NET_4.0.30319\Names                      NT AUTHORITY\SYSTEM         BUILTIN\Performance Log Users    {CreateSubKey, SetValue, ReadPermissions, Notify...}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings              NT SERVICE\TrustedInstaller NT AUTHORITY\INTERACTIVE         {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings              NT SERVICE\TrustedInstaller NT AUTHORITY\Authenticated Users {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\AudioGateway NT AUTHORITY\SYSTEM         NT AUTHORITY\INTERACTIVE         {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\AudioGateway NT AUTHORITY\SYSTEM         NT AUTHORITY\Authenticated Users {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\HandsFree    NT AUTHORITY\SYSTEM         NT AUTHORITY\INTERACTIVE         {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\HandsFree    NT AUTHORITY\SYSTEM         NT AUTHORITY\Authenticated Users {CreateSubKey, SetValue, ReadPermissions}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\embeddedmode\Parameters                      NT AUTHORITY\SYSTEM         NT AUTHORITY\INTERACTIVE         {CreateSubKey, ReadPermissions, EnumerateSubKeys, QueryValues}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\embeddedmode\Parameters                      NT AUTHORITY\SYSTEM         NT AUTHORITY\Authenticated Users {CreateSubKey, ReadPermissions, Notify, EnumerateSubKeys...}
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\vds\Alignment                                NT AUTHORITY\SYSTEM         NT AUTHORITY\Authenticated Users {CreateSubKey, ReadPermissions, EnumerateSubKeys, QueryValues}
+
+.OUTPUTS
+
+PowerUp.TokenPrivilege.ModifiableReg
+
+Custom PSObject containing the Permissions, Owner, ModifiablePath and IdentityReference for
+a modifiable registry path.
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ModifiableReg')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
+        [Alias('PSPath')]
+        [Alias('Name')]
+        [String[]]
+        $Path
+    )
+
+    BEGIN {
+        
+        $AccessMask = @{
+             [uint32]'0x80000000' = 'GenericRead'
+             [uint32]'0x40000000' = 'GenericWrite'
+             [uint32]'0x20000000' = 'GenericExecute'
+             [uint32]'0x10000000' = 'GenericAll'
+             [uint32]'0x02000000' = 'MaximumAllowed'
+             [uint32]'0x00080000' = 'WriteOwner'
+             [uint32]'0x00040000' = 'WriteDAC'
+             [uint32]'0x00020000' = 'ReadPermissions'
+             [uint32]'0x00010000' = 'Delete'
+             [uint32]'0x00000020' = 'CreateLink'
+             [uint32]'0x00000010' = 'Notify'
+             [uint32]'0x00000008' = 'EnumerateSubKeys'
+             [uint32]'0x00000004' = 'CreateSubKey'
+             [uint32]'0x00000002' = 'SetValue'
+             [uint32]'0x00000001' = 'QueryValues'
+        }
+
+        # this is an xor of GenericWrite, GenericAll, MaximumAllowed, WriteOwner, WriteDAC, CreateSubKey, SetValue, CreateLink, Delete
+        # TODO: Evaluate the exploitation potential of CreateLink
+        $MAccessMask = 0x520d0006
+
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
+        $TranslatedIdentityReferences = @{}
+    }
+
+    PROCESS {
+
+        ForEach($TargetPath in $Path) {
+
+            
+            $CandidatePath = $TargetPath
+            if( -not $CandidatePath.StartsWith("Microsoft") ) {
+                $CandidatePath = "Microsoft.PowerShell.Core\Registry::$($TargetPath.replace(':',''))"
+            }
+
+            if (Test-Path -Path $CandidatePath -ErrorAction SilentlyContinue) {
+                $CandidatePath = Resolve-Path -Path $CandidatePath | Select-Object -ExpandProperty Path
+            } else {
+                # if the path doesn't exist, check if the parent folder allows for modification
+                $ParentPath = Split-Path -Path $CandidatePath -Parent  -ErrorAction SilentlyContinue
+                if ($ParentPath -and (Test-Path -Path $ParentPath)) {
+                    $CandidatePath = Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
+                } else {
+                    continue
+                }
+            }
+
+            $Acl = Get-Acl -Path $CandidatePath -ErrorAction SilentlyContinue
+            $Owner = $Acl.Owner
+
+            # handling forward slashes inside of registry keys is a pain. Test-Path will tell you that the path exists.
+            # Get-Acl will throw an exception, but only if -ErrorAction is not Stop. If the -ErrorAction is Stop,
+            # Get-Acl will throw no error and just return $null. Therefore, we cannot try/catch, but need instead to check
+            # manually if the $Acl result is $null. If it is and the path contains a '/', we obtain the ACL in another way.
+            if( $Acl -eq $null ) {
+                if( $CandidatePath.contains('/') ) {
+                    try {
+                        $Split = $CandidatePath.split('\')
+                        $hive = Get-Item ($Split[0,1] -join '\')
+                        $CandidatePath = $hive.OpenSubKey($Split[2..$Split.Length] -join '\')
+                        $Acl = $CandidatePath.GetAccessControl()
+                        $Owner = $Acl.Owner
+                    } catch {
+                        continue
+                    }
+                } else {
+                    continue
+                }
+            }
+
+            $Acl | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
+
+                $RegistryRights = $_.RegistryRights.value__
+
+                if( $RegistryRights -band $MAccessMask )  {
+
+                    $Permissions = $AccessMask.Keys | Where-Object { $RegistryRights -band $_ } | ForEach-Object { $AccessMask[$_] }
+
+                    $IdentityRef = $_.IdentityReference
+                    if ($IdentityRef -notmatch '^S-1-5.*') {
+
+                        if (-not ($TranslatedIdentityReferences[$IdentityRef])) {
+                            $IdentityUser = New-Object System.Security.Principal.NTAccount($IdentityRef)
+                            try {
+                                $TranslatedIdentityReferences[$IdentityRef] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                            } catch {
+                                $TranslatedIdentityReferences[$IdentityRef] = $IdentityUser
+                            }
+                        }
+                        $IdentitySID = $TranslatedIdentityReferences[$_.IdentityReference]
+
+                    }
+                    else {
+                        $IdentitySID = $_.IdentityReference
+                    }
+
+                    if ($CurrentUserSids -contains $IdentitySID) {
+                        $Out = New-Object PSObject
+                        $Out | Add-Member Noteproperty 'ModifiablePath' $CandidatePath
+                        $out | Add-Member Noteproperty 'Owner' $Owner
+                        $Out | Add-Member Noteproperty 'IdentityReference' $_.IdentityReference
+                        $Out | Add-Member Noteproperty 'Permissions' $Permissions
+                        $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableReg')
+                        $Out
+                    }
+                }
+            }
+        }
+    }
+}
