@@ -752,9 +752,9 @@ Takes a complex path specification of an initial file/folder path with possible
 configuration files, 'tokenizes' the string in a number of possible ways, and
 enumerates the ACLs for each path that currently exists on the system. Any path that
 the current user has modification rights on is returned in a custom object that contains
-the modifiable path, associated permission set, and the IdentityReference with the specified
-rights. The SID of the current user and any group he/she are a part of are used as the
-comparison set against the parsed path DACLs.
+the modifiable path, owner, associated permission set, and the IdentityReference with the
+specified rights. The SID of the current user and any group he/she are a part of are used
+as the comparison set against the parsed path DACLs.
 
 .PARAMETER Path
 
@@ -787,7 +787,7 @@ C:\Vuln\config.ini         {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
 
 PowerUp.TokenPrivilege.ModifiablePath
 
-Custom PSObject containing the Permissions, ModifiablePath, IdentityReference for
+Custom PSObject containing the Permissions, Owner, ModifiablePath and IdentityReference for
 a modifiable path.
 #>
 
