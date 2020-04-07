@@ -744,6 +744,7 @@ the file paths where the current user has modification rights.
 Author: Will Schroeder (@harmj0y)  
 License: BSD 3-Clause  
 Required Dependencies: None  
+EditedBy: Tobias Neitzel (@qtc-de)
 
 .DESCRIPTION
 
@@ -774,7 +775,7 @@ C:\Temp\config.ini         {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
 
 .EXAMPLE
 
-Get-ChildItem C:\Vuln\ -Recurse | Get-ModifiablePath
+Get-ChildItem C:\ProgramData\ -File -Recurse -ErrorAction SilentlyContinue | Get-ModifiablePath -Literal
 
 Path                       Permissions                IdentityReference
 ----                       -----------                -----------------
@@ -829,6 +830,12 @@ a modifiable path.
             [uint32]'0x00000001' = 'ReadData/ListDirectory'
         }
 
+        # this is an xor of GenericWrite, GenericAll, MaximumAllowed, WriteOwner, WriteDAC, AppendData/AddSubdirectory, WriteData/AddFile, Delete
+        $MAccessMask = 0x520d0006
+        
+        # possible separator character combinations
+        $SeparationCharacterSets = @('"', "'", ' ', "`"'", '" ', "' ", "`"' ")
+
         $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
         $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
         $CurrentUserSids += $UserIdentity.User.Value
@@ -840,9 +847,6 @@ a modifiable path.
         ForEach($TargetPath in $Path) {
 
             $CandidatePaths = @()
-
-            # possible separator character combinations
-            $SeparationCharacterSets = @('"', "'", ' ', "`"'", '" ', "' ", "`"' ")
 
             if ($PSBoundParameters['Literal']) {
 
@@ -860,6 +864,7 @@ a modifiable path.
                 }
             }
             else {
+
                 ForEach($SeparationCharacterSet in $SeparationCharacterSets) {
                     $TargetPath.Split($SeparationCharacterSet) | Where-Object {$_ -and ($_.trim() -ne '')} | ForEach-Object {
 
@@ -894,24 +899,37 @@ a modifiable path.
             }
 
             $CandidatePaths | Sort-Object -Unique | ForEach-Object {
+                
                 $CandidatePath = $_
-                Get-Acl -Path $CandidatePath | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
+
+                try {
+                    $Acl = Get-Acl -Path $CandidatePath
+                    $Owner = $Acl.Owner;
+                } catch [System.UnauthorizedAccessException] {
+                    continue
+                }
+
+                $Acl | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
 
                     $FileSystemRights = $_.FileSystemRights.value__
 
-                    $Permissions = $AccessMask.Keys | Where-Object { $FileSystemRights -band $_ } | ForEach-Object { $AccessMask[$_] }
+                    if( $FileSystemRights -band $MAccessMask )  {
 
-                    # the set of permission types that allow for modification
-                    $Comparison = Compare-Object -ReferenceObject $Permissions -DifferenceObject @('GenericWrite', 'GenericAll', 'MaximumAllowed', 'WriteOwner', 'WriteDAC', 'WriteData/AddFile', 'AppendData/AddSubdirectory') -IncludeEqual -ExcludeDifferent
+                        $Permissions = $AccessMask.Keys | Where-Object { $FileSystemRights -band $_ } | ForEach-Object { $AccessMask[$_] }
 
-                    if ($Comparison) {
-                        if ($_.IdentityReference -notmatch '^S-1-5.*') {
-                            if (-not ($TranslatedIdentityReferences[$_.IdentityReference])) {
-                                # translate the IdentityReference if it's a username and not a SID
-                                $IdentityUser = New-Object System.Security.Principal.NTAccount($_.IdentityReference)
-                                $TranslatedIdentityReferences[$_.IdentityReference] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                        $IdentityRef = $_.IdentityReference
+                        if ($IdentityRef -notmatch '^S-1-5.*') {
+
+                            if (-not ($TranslatedIdentityReferences[$IdentityRef])) {
+                                $IdentityUser = New-Object System.Security.Principal.NTAccount($IdentityRef)
+                                try {
+                                    $TranslatedIdentityReferences[$IdentityRef] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                                } catch {
+                                    $TranslatedIdentityReferences[$IdentityRef] = $IdentityUser
+                                }
                             }
                             $IdentitySID = $TranslatedIdentityReferences[$_.IdentityReference]
+
                         }
                         else {
                             $IdentitySID = $_.IdentityReference
@@ -920,6 +938,7 @@ a modifiable path.
                         if ($CurrentUserSids -contains $IdentitySID) {
                             $Out = New-Object PSObject
                             $Out | Add-Member Noteproperty 'ModifiablePath' $CandidatePath
+                            $out | Add-Member Noteproperty 'Owner' $Owner
                             $Out | Add-Member Noteproperty 'IdentityReference' $_.IdentityReference
                             $Out | Add-Member Noteproperty 'Permissions' $Permissions
                             $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiablePath')
