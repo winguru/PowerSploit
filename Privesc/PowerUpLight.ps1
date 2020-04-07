@@ -41,10 +41,10 @@ C:\Temp\config.ini         {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
 
 Get-ChildItem C:\ProgramData\ -File -Recurse -ErrorAction SilentlyContinue | Get-ModifiablePath -Literal
 
-Path                       Permissions                IdentityReference
-----                       -----------                -----------------
-C:\Vuln\blah.bat           {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
-C:\Vuln\config.ini         {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
+ModifiablePath                                            Owner                  IdentityReference        Permissions                                                                           
+--------------                                            -----                  -----------------        -----------                                                                           
+C:\ProgramData\chocolatey\logs\choco.summary.log          BUILTIN\Administrators BUILTIN\Users            {WriteAttributes, Synchronize, AppendData/AddSubdirectory, WriteExtendedAttributes...}
+C:\ProgramData\chocolatey\logs\chocolatey.log             BUILTIN\Administrators BUILTIN\Users            {WriteAttributes, Synchronize, AppendData/AddSubdirectory, WriteExtendedAttributes...}
 ...
 
 .OUTPUTS
@@ -124,6 +124,8 @@ a modifiable path.
                     $ParentPath = Split-Path -Path $TempPath -Parent  -ErrorAction SilentlyContinue
                     if ($ParentPath -and (Test-Path -Path $ParentPath)) {
                         $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
+                    } else {
+                        Write-Warning "Skipping: $TempPath [Not Found]"
                     }
                 }
             }
@@ -167,9 +169,10 @@ a modifiable path.
                 $CandidatePath = $_
 
                 try {
-                    $Acl = Get-Acl -Path $CandidatePath
+                    $Acl = Get-Acl -Path $CandidatePath -ErrorAction Stop
                     $Owner = $Acl.Owner;
                 } catch [System.UnauthorizedAccessException] {
+                    Write-Warning "Skipping: $CandidatePath [Access Denied]"
                     continue
                 }
 
@@ -318,45 +321,33 @@ a modifiable registry path.
 
         ForEach($TargetPath in $Path) {
 
-            
             $CandidatePath = $TargetPath
             if( -not $CandidatePath.StartsWith("Microsoft") ) {
-                $CandidatePath = "Microsoft.PowerShell.Core\Registry::$($TargetPath.replace(':',''))"
+                $CandidatePath = "Microsoft.PowerShell.Core\Registry::$($CandidatePath.replace(':',''))"
             }
 
-            if (Test-Path -Path $CandidatePath -ErrorAction SilentlyContinue) {
-                $CandidatePath = Resolve-Path -Path $CandidatePath | Select-Object -ExpandProperty Path
-            } else {
-                # if the path doesn't exist, check if the parent folder allows for modification
+            # registry Paths can contain wildcard and other special characters. Therefore they should not be
+            # expanded or resolved befor processing
+            if (-not (Test-Path -Path $CandidatePath -ErrorAction SilentlyContinue) ) {
+                # if the path doesn't exist, check if the parent folder allows for modification.
+                # This will not work if the leaf of the missing path contains a forward slash
                 $ParentPath = Split-Path -Path $CandidatePath -Parent  -ErrorAction SilentlyContinue
-                if ($ParentPath -and (Test-Path -Path $ParentPath)) {
-                    $CandidatePath = Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
-                } else {
+                if (-not ($ParentPath -and (Test-Path -Path $ParentPath)) ) {
+                    Write-Warning "Skipping: $CandidatePath [Not Found]"
                     continue
+                } else {
+                    $CandidatePath = $ParentPath
                 }
             }
 
-            $Acl = Get-Acl -Path $CandidatePath -ErrorAction SilentlyContinue
-            $Owner = $Acl.Owner
-
-            # handling forward slashes inside of registry keys is a pain. Test-Path will tell you that the path exists.
-            # Get-Acl will throw an exception, but only if -ErrorAction is not Stop. If the -ErrorAction is Stop,
-            # Get-Acl will throw no error and just return $null. Therefore, we cannot try/catch, but need instead to check
-            # manually if the $Acl result is $null. If it is and the path contains a '/', we obtain the ACL in another way.
-            if( $Acl -eq $null ) {
-                if( $CandidatePath.contains('/') ) {
-                    try {
-                        $Split = $CandidatePath.split('\')
-                        $hive = Get-Item ($Split[0,1] -join '\')
-                        $CandidatePath = $hive.OpenSubKey($Split[2..$Split.Length] -join '\')
-                        $Acl = $CandidatePath.GetAccessControl()
-                        $Owner = $Acl.Owner
-                    } catch {
-                        continue
-                    }
-                } else {
-                    continue
-                }
+            try {
+                # Get-Acl fails on paths containing special characters like '/' or '*'. Therefore, we use Get-Item.
+                $Key = Get-Item -LiteralPath $CandidatePath -ErrorAction Stop
+                $Acl = $Key.GetAccessControl()
+                $Owner = $Acl.Owner;
+            } catch [System.UnauthorizedAccessException] {
+                Write-Warning "Skipping: $CandidatePath [Access Denied]"
+                continue
             }
 
             $Acl | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
