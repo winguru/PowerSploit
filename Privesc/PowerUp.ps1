@@ -2188,7 +2188,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
 
             $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
 
-            $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '')} | Foreach-Object {
+            $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
                 $CanRestart = Test-ServiceDaclPermission -PermissionSet 'Restart' -Name $Service.name
                 $Out = New-Object PSObject
                 $Out | Add-Member Noteproperty 'ServiceName' $Service.name
