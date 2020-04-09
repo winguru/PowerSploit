@@ -1,3 +1,9 @@
+########################################################
+#
+# Resources Enumeration
+#
+########################################################
+
 function Get-ModifiablePath {
 <#
 .SYNOPSIS
@@ -385,6 +391,193 @@ a modifiable registry path.
                         $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableReg')
                         $Out
                     }
+                }
+            }
+        }
+    }
+}
+
+
+########################################################
+#
+# Service enumeration
+#
+########################################################
+
+function Get-ServiceReg {
+<#
+.SYNOPSIS
+
+Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry Hive.
+This circumvents restricted access to ordinary service enumeration like sc.exe or Get-Service.
+
+Author: Tobias Neitzel
+License: BSD 3-Clause  
+Required Dependencies: None  
+
+.DESCRIPTION
+
+Queries the HKLM:\SYSTEM\CurrentControlSet\Services Hive and enumerates all present services.
+
+.PARAMETER Verbose
+
+Switch. Show warning messages for services with non existing image paths
+
+.EXAMPLE
+
+$s = Get-ServiceReg
+
+Get all services that are available inside the registry.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    param()
+
+    $StartupTypes = @{
+        0 = 'On Boot'
+        1 = 'System Controlled'
+        2 = 'Autostart'
+        3 = 'Manual'
+        4 = 'Disabled'
+        999 = 'unknown'
+    }
+
+    $DefaultSddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CR;;;AU)'
+    $DefaultSD =  New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$DefaultSddl
+
+    Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services' | ForEach-Object {
+
+        $ServiceName = $_.PSChildName
+        $ImagePath = $_.GetValue("ImagePath")
+
+        if( $ImagePath -eq $null ) {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Skipping: $ServiceName [No Image Path]"
+            }
+            return
+        }
+
+        try {
+            $Key = $_.OpenSubKey("Security")
+        } catch [System.Management.Automation.MethodException] {
+            Write-Warning "Skipping: $ServiceName [Access Denied]"
+            return
+        }
+
+        if( $Key -eq $null ) {
+            $SecurityDescriptor = $DefaultSD
+        } else {
+            try {
+                $Sec = $Key.GetValue("Security")
+                $SecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+            } catch [System.Management.Automation.MethodException] {
+                Write-Warning "Skipping: $ServiceName [Parsing Error]"
+                return
+            }
+        }
+
+        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
+        
+        $Service = New-Object PSObject
+        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
+        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
+        $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
+        $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
+        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
+        $Service | Add-Member -MemberType NoteProperty -Name Access -Value  $SecurityDescriptor.DiscretionaryAcl
+        $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartupTypes[$StartupType]
+        $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+        $Service
+    }
+}
+
+
+function Get-UnquotedService {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with unquoted image
+paths that are modifiable by the current user.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. The objects that are expected as input for this method can be either obtained
+using Get-ServiceReg or Get-ServiceSc.
+
+.EXAMPLE
+
+Get-ServiceReg | Get-UnquotedService
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
+ImagePath        :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+ObjectName       : NT AUTHORITY\LocalService
+Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+RequiredServices : 
+StartType        : Manual
+ModifiablePath1  : "C:\Program Files\AjRouter"
+ModifiablePath2  : "C:\Program Files\AjRouter\Routing Solutions\aj-start.exe"
+
+.OUTPUTS
+
+PowerUp.Service
+
+.LINK
+
+https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/windows/local/trusted_service_path.rb
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.UnquotedService')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services
+    )
+
+    BEGIN {
+        $Regex = [regex]"^[^`"'].* .*\.exe"
+    }
+
+    PROCESS {
+        ForEach($Service in $Services) {
+
+            if( $Service.ImagePath -eq $Null ) {
+                Write-Warning "Skipping: $Service.Name [No Image Path]"
+                continue
+            }
+
+            if( $Regex.Match($Service.ImagePath).Success ){
+
+                $SplitPathArray = $Service.ImagePath.Split(' ')
+                $ConcatPathArray = @()
+                for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
+                            $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
+                }
+
+                $count = 1
+                $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
+                $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
+                    $Service | Add-Member -MemberType NoteProperty -Name "ModifiablePath$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                    $count += 1
+                }
+                if( $count -gt 1 ) { 
+                    $Service 
                 }
             }
         }

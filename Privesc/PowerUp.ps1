@@ -2047,7 +2047,95 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 #
 ########################################################
 
+
 function Get-UnquotedService {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with unquoted image
+paths that are modifiable by the current user.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. The objects that are expected as input for this method can be either obtained
+using Get-ServiceReg or Get-ServiceSc.
+
+.EXAMPLE
+
+Get-ServiceReg | Get-UnquotedService
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
+ImagePath        :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+ObjectName       : NT AUTHORITY\LocalService
+Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+RequiredServices : 
+StartType        : Manual
+ModifiablePath1  : "C:\Program Files\AjRouter"
+ModifiablePath2  : "C:\Program Files\AjRouter\Routing Solutions\aj-start.exe"
+
+.OUTPUTS
+
+PowerUp.Service
+
+.LINK
+
+https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/windows/local/trusted_service_path.rb
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.UnquotedService')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services
+    )
+
+    BEGIN {
+        $Regex = [regex]"^[^`"'].* .*\.exe"
+    }
+
+    PROCESS {
+        ForEach($Service in $Services) {
+
+            if( $Service.ImagePath -eq $Null ) {
+                Write-Warning "Skipping: $Service.Name [No Image Path]"
+                continue
+            }
+
+            if( $Regex.Match($Service.ImagePath).Success ){
+
+                $SplitPathArray = $Service.ImagePath.Split(' ')
+                $ConcatPathArray = @()
+                for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
+                            $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
+                }
+
+                $count = 1
+                $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
+                $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
+                    $Service | Add-Member -MemberType NoteProperty -Name "ModifiablePath$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                    $count += 1
+                }
+                if( $count -gt 1 ) { 
+                    $Service 
+                }
+            }
+        }
+    }
+}
+
+
+function Get-UnquotedServiceWmi {
 <#
 .SYNOPSIS
 
@@ -2066,7 +2154,7 @@ and aren't quoted.
 
 .EXAMPLE
 
-Get-UnquotedService
+Get-UnquotedServiceWmi
 
 Get a set of potentially exploitable services.
 
@@ -2290,6 +2378,72 @@ System.Management.ManagementObject
     }
 }
 
+
+function Get-ServiceReg {
+<#
+.SYNOPSIS
+
+Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry Hive.
+This circumvents restricted access to ordinary service enumeration like sc.exe or Get-Service.
+
+Author: Tobias Neitzel
+License: BSD 3-Clause  
+Required Dependencies: None  
+
+.DESCRIPTION
+
+Queries the HKLM:\SYSTEM\CurrentControlSet\Services Hive and enumerates all present services.
+
+.EXAMPLE
+
+$s = Get-ServiceReg
+
+Get all services that are available inside the registry.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+
+    $StartTypes = @{
+        [uint32]'0' = 'On Boot'
+        [uint32]'1' = 'System Controlled'
+        [uint32]'2' = 'Autostart'
+        [uint32]'3' = 'Manual'
+        [uint32]'4' = 'Disabled'
+    }@
+
+    $DefaultSddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CR;;;AU)'
+    $DefaultAcl = ConvertFrom-Sddl $DefaultSddl
+
+    Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services' | ForEach-Object {
+
+        $Key = $_.OpenSubKey("Security")
+        if( $Key -eq $null ) {
+            $Sddl = $DefaultSddl
+        } else {
+            $Sec = $Key.GetValue("Security")
+            $converter = New-Object System.Management.ManagementClass Win32_SecurityDescriptorHelper
+            $Sddl = $converter.BinarySDToSDDL($Sec).SDDL;
+        }
+
+        $SecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sddl
+        $Service = New-Object -TypeName 'PowerUp.Service'
+        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.PSChildName
+        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $_.PSChildName
+        $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
+        $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
+        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
+        $Service | Add-Member -MemberType NoteProperty -Name SecurityDescriptor -Value  $SecurityDescriptor
+        $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartTypes[$_.GetValue("Start")]
+        $Service | Add-Member -MemberType NoteProperty -Name Sddl -Value $Sddl
+
+
+}
 
 ########################################################
 #
@@ -4951,7 +5105,7 @@ detailing any discovered issues.
         # Service checks
         @{
             Type    = 'Unquoted Service Paths'
-            Command = { Get-UnquotedService }
+            Command = { Get-UnquotedServiceWmi }
         },
         @{
             Type    = 'Modifiable Service Files'
