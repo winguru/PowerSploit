@@ -2135,6 +2135,67 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
 }
 
 
+function Get-ModifiableServiceFile {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with modifiable service
+files.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. The objects that are expected as input for this method can be either obtained
+using Get-ServiceReg or Get-ServiceSc.
+
+.EXAMPLE
+
+Get-ModifiableServiceFile
+
+Get a set of potentially exploitable service binares/config files.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ModifiableService')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services
+    )
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $ServiceName = $Service.Name
+            $ServicePath = $Service.ImagePath
+            $ServiceStartName = $Service.ServiceName
+
+            $count = 1
+            $ServicePath | Get-ModifiablePath | ForEach-Object {
+                $Service | Add-Member -MemberType NoteProperty -Name "ModifiableFile$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                $count += 1
+            }
+
+            if( $count -gt 1 ) { 
+                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
+                $Service 
+            }
+        }
+    }
+}
+
+
 function Get-UnquotedServiceWmi {
 <#
 .SYNOPSIS
@@ -2206,7 +2267,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
 }
 
 
-function Get-ModifiableServiceFile {
+function Get-ModifiableServiceFileWmi {
 <#
 .SYNOPSIS
 
@@ -2226,7 +2287,7 @@ privileges may be able to be escalated.
 
 .EXAMPLE
 
-Get-ModifiableServiceFile
+Get-ModifiableServiceFileWmi
 
 Get a set of potentially exploitable service binares/config files.
 
@@ -2388,17 +2449,25 @@ This circumvents restricted access to ordinary service enumeration like sc.exe o
 
 Author: Tobias Neitzel
 License: BSD 3-Clause  
-Required Dependencies: None  
+Required Dependencies: ServiceAccessRights (Enum)  
 
 .DESCRIPTION
 
 Queries the HKLM:\SYSTEM\CurrentControlSet\Services Hive and enumerates all present services.
 
+.PARAMETER Verbose
+
+Switch. Show warning messages for services with non existing image paths
+
+.PARAMETER IncludeDrivers
+
+Switch. Include services associated with kernel and filesystem drivers
+
 .EXAMPLE
 
 $s = Get-ServiceReg
 
-Get all services that are available inside the registry.
+Get all non driver services that are available inside the registry.
 
 .OUTPUTS
 
@@ -2407,42 +2476,77 @@ PowerUp.Service
 
     [OutputType('PowerUp.Service')]
     [CmdletBinding()]
+    param(
+        [Switch]
+        $IncludeDrivers
+    )
 
-    $StartTypes = @{
-        [uint32]'0' = 'On Boot'
-        [uint32]'1' = 'System Controlled'
-        [uint32]'2' = 'Autostart'
-        [uint32]'3' = 'Manual'
-        [uint32]'4' = 'Disabled'
-    }@
+    $StartupTypes = @{
+        0 = 'On Boot'
+        1 = 'System Controlled'
+        2 = 'Autostart'
+        3 = 'Manual'
+        4 = 'Disabled'
+        999 = 'unknown'
+    }
 
     $DefaultSddl = 'D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;CR;;;AU)'
-    $DefaultAcl = ConvertFrom-Sddl $DefaultSddl
+    $DefaultSD =  New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$DefaultSddl
 
     Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services' | ForEach-Object {
 
-        $Key = $_.OpenSubKey("Security")
-        if( $Key -eq $null ) {
-            $Sddl = $DefaultSddl
-        } else {
-            $Sec = $Key.GetValue("Security")
-            $converter = New-Object System.Management.ManagementClass Win32_SecurityDescriptorHelper
-            $Sddl = $converter.BinarySDToSDDL($Sec).SDDL;
+        $ServiceName = $_.PSChildName
+        $ImagePath = $_.GetValue("ImagePath")
+        $Type = $_.GetValue("Type")
+
+        if( $ImagePath -eq $null ) {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Skipping: $ServiceName [No Image Path]"
+            }
+            return
+        } elseif( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Skipping: $ServiceName [Driver]"
+            }
+            return
         }
 
-        $SecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sddl
-        $Service = New-Object -TypeName 'PowerUp.Service'
-        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.PSChildName
-        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $_.PSChildName
+        try {
+            $Key = $_.OpenSubKey("Security")
+        } catch [System.Management.Automation.MethodException] {
+            Write-Warning "Skipping: $ServiceName [Access Denied]"
+            return
+        }
+
+        if( $Key -eq $null ) {
+            $SecurityDescriptor = $DefaultSD
+        } else {
+            try {
+                $Sec = $Key.GetValue("Security")
+                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+                $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                    Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
+                }
+            } catch [System.Management.Automation.MethodException] {
+                Write-Warning "Skipping: $ServiceName [Parsing Error]"
+                return
+            }
+        }
+
+        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
+        
+        $Service = New-Object PSObject
+        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
+        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
         $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
         $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
-        $Service | Add-Member -MemberType NoteProperty -Name SecurityDescriptor -Value  $SecurityDescriptor
+        $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
-        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartTypes[$_.GetValue("Start")]
-        $Service | Add-Member -MemberType NoteProperty -Name Sddl -Value $Sddl
-
-
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartupTypes[$StartupType]
+        $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+        $Service
+    }
 }
 
 ########################################################
@@ -5109,7 +5213,7 @@ detailing any discovered issues.
         },
         @{
             Type    = 'Modifiable Service Files'
-            Command = { Get-ModifiableServiceFile }
+            Command = { Get-ModifiableServiceFileWmi }
         },
         @{
             Type    = 'Modifiable Services'

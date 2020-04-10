@@ -413,7 +413,7 @@ This circumvents restricted access to ordinary service enumeration like sc.exe o
 
 Author: Tobias Neitzel
 License: BSD 3-Clause  
-Required Dependencies: None  
+Required Dependencies: ServiceAccessRights (Enum)  
 
 .DESCRIPTION
 
@@ -423,11 +423,15 @@ Queries the HKLM:\SYSTEM\CurrentControlSet\Services Hive and enumerates all pres
 
 Switch. Show warning messages for services with non existing image paths
 
+.PARAMETER IncludeDrivers
+
+Switch. Include services associated with kernel and filesystem drivers
+
 .EXAMPLE
 
 $s = Get-ServiceReg
 
-Get all services that are available inside the registry.
+Get all non driver services that are available inside the registry.
 
 .OUTPUTS
 
@@ -436,7 +440,10 @@ PowerUp.Service
 
     [OutputType('PowerUp.Service')]
     [CmdletBinding()]
-    param()
+    param(
+        [Switch]
+        $IncludeDrivers
+    )
 
     $StartupTypes = @{
         0 = 'On Boot'
@@ -454,10 +461,16 @@ PowerUp.Service
 
         $ServiceName = $_.PSChildName
         $ImagePath = $_.GetValue("ImagePath")
+        $Type = $_.GetValue("Type")
 
         if( $ImagePath -eq $null ) {
             if( $PSBoundParameters['Verbose'] ) {
                 Write-Warning "Skipping: $ServiceName [No Image Path]"
+            }
+            return
+        } elseif( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Skipping: $ServiceName [Driver]"
             }
             return
         }
@@ -474,7 +487,10 @@ PowerUp.Service
         } else {
             try {
                 $Sec = $Key.GetValue("Security")
-                $SecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+                $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                    Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as [ServiceAccessRights]) -PassThru
+                }
             } catch [System.Management.Automation.MethodException] {
                 Write-Warning "Skipping: $ServiceName [Parsing Error]"
                 return
@@ -489,7 +505,7 @@ PowerUp.Service
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
         $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
         $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
-        $Service | Add-Member -MemberType NoteProperty -Name Access -Value  $SecurityDescriptor.DiscretionaryAcl
+        $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
         $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartupTypes[$StartupType]
         $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
@@ -583,3 +599,90 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
         }
     }
 }
+
+function Get-ModifiableServiceFile {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with modifiable service
+files.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. The objects that are expected as input for this method can be either obtained
+using Get-ServiceReg or Get-ServiceSc.
+
+.EXAMPLE
+
+Get-ModifiableServiceFile
+
+Get a set of potentially exploitable service binares/config files.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ModifiableService')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services
+    )
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $ServiceName = $Service.Name
+            $ServicePath = $Service.ImagePath
+            $ServiceStartName = $Service.ServiceName
+
+            $count = 1
+            $ServicePath | Get-ModifiablePath | ForEach-Object {
+                $Service | Add-Member -MemberType NoteProperty -Name "ModifiableFile$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                $count += 1
+            }
+
+            if( $count -gt 1 ) { 
+                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
+                $Service 
+            }
+        }
+    }
+}
+
+
+Add-Type @"
+    [System.FlagsAttribute]
+    public enum ServiceAccessRights : uint {
+    QueryConfig             =   0x00000001,
+    ChangeConfig            =   0x00000002,
+    QueryStatus             =   0x00000004,
+    EnumerateDependents     =   0x00000008,
+    Start                   =   0x00000010,
+    Stop                    =   0x00000020,
+    PauseContinue           =   0x00000040,
+    Interrogate             =   0x00000080,
+    UserDefinedControl      =   0x00000100,
+    Delete                  =   0x00010000,
+    ReadControl             =   0x00020000,
+    WriteDac                =   0x00040000,
+    WriteOwner              =   0x00080000,
+    Synchronize             =   0x00100000,
+    AccessSystemSecurity    =   0x01000000,
+    GenericAll              =   0x10000000,
+    GenericExecute          =   0x20000000,
+    GenericWrite            =   0x40000000,
+    GenericRead             =   0x80000000,
+    AllAccess               =   0x000F01FF
+}
+"@
