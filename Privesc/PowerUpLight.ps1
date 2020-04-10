@@ -661,6 +661,82 @@ PowerUp.Service
 }
 
 
+function Show-ServicePermissions {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with modifiable service
+files.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. The objects that are expected as input for this method can be either obtained
+using Get-ServiceReg or Get-ServiceSc.
+
+.EXAMPLE
+
+Get-ModifiableServiceFile
+
+Get a set of potentially exploitable service binares/config files.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ServicePermission')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services,
+
+        [Switch]
+        $All
+    )
+
+    BEGIN {
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
+        $TranslatedIdentityReferences = @{}
+    }
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $Service | Select-Object -ExpandProperty Dacl | Where-Object { $_.AceType -match 'Allow' } | ForEach-Object {
+
+                $Permissions = $_.AccessRights
+                $Sid = $_.SecurityIdentifier   
+                try {
+                    $i = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+                    $Principal = $i.Translate([System.Security.Principal.NTAccount]).Value
+                } catch {
+                    $Principal = $Sid
+                }
+                if( ($CurrentUserSids -contains $Sid) -or $All ) {
+                    $Out = New-Object PSObject
+                    $Out | Add-Member Noteproperty 'Service' $Service.Name
+                    $Out | Add-Member Noteproperty 'Principal' $Principal
+                    $Out | Add-Member Noteproperty 'ObjectName' $Service.ObjectName
+                    $Out | Add-Member Noteproperty 'Permissions' $Permissions
+                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.Principal')
+                    $Out
+                }
+            }
+        }
+    }
+}
+
 Add-Type @"
     [System.FlagsAttribute]
     public enum ServiceAccessRights : uint {
