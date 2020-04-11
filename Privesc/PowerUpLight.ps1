@@ -665,8 +665,7 @@ function Show-ServicePermissions {
 <#
 .SYNOPSIS
 
-Takes PowerUp.Service objects as input and returns services with modifiable service
-files.
+Takes PowerUp.Service objects and transforms their access permissions in a human readable format.
 
 Author: Tobias Neitzel (@qtc-de)
 License: BSD 3-Clause  
@@ -674,21 +673,44 @@ Required Dependencies:
 
 .DESCRIPTION
 
-This method is also implemented in the ordinary PowerUp script, but uses WMI to query
-service information. WMI access is often disabled for low privileged user accounts.
-Therefore, it is desireable to have an alternative method, which does not rely on WMI
-access. The objects that are expected as input for this method can be either obtained
-using Get-ServiceReg or Get-ServiceSc.
+This method takes PowerUp.Service objects and transforms them to PowerUp.ServicePermission objects.
+PowerUp.ServicePermission objects allow easy and organized access to the permissions of a service.
+Without any arguments, services where the current user has no access at all are not shown. Use the
+-All switch to include all services.
 
 .EXAMPLE
 
-Get-ModifiableServiceFile
+Get-ServiceReg | Show-ServicePermissions
 
-Get a set of potentially exploitable service binares/config files.
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions
+
+Service                  Principal                        ObjectName                                                                                                    Permissions
+-------                  ---------                        ----------                                                                                                    -----------
+AJRouter                 NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+AJRouter                 NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+ALG                      NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+ALG                      NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+AppIDSvc                 NT AUTHORITY\INTERACTIVE         NT Authority\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+[...]
+
+Access permissions of the current user.
+
+.EXAMPLE
+
+Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'change') }
+
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'all') }
+
+Service      Principal                ObjectName  Permissions
+-------      ---------                ----------  -----------
+UmRdpService NT AUTHORITY\INTERACTIVE localSystem   AllAccess
+[...]
+
+Show services where the current user has AllAccess.
 
 .OUTPUTS
 
-PowerUp.Service
+PowerUp.ServicePermission
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]

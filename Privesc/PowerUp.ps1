@@ -2549,6 +2549,105 @@ PowerUp.Service
     }
 }
 
+
+function Show-ServicePermissions {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects and transforms their access permissions in a human readable format.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method takes PowerUp.Service objects and transforms them to PowerUp.ServicePermission objects.
+PowerUp.ServicePermission objects allow easy and organized access to the permissions of a service.
+Without any arguments, services where the current user has no access at all are not shown. Use the
+-All switch to include all services.
+
+.EXAMPLE
+
+Get-ServiceReg | Show-ServicePermissions
+
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions
+
+Service                  Principal                        ObjectName                                                                                                    Permissions
+-------                  ---------                        ----------                                                                                                    -----------
+AJRouter                 NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+AJRouter                 NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+ALG                      NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+ALG                      NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+AppIDSvc                 NT AUTHORITY\INTERACTIVE         NT Authority\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+[...]
+
+Access permissions of the current user.
+
+.EXAMPLE
+
+Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'change') }
+
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'all') }
+
+Service      Principal                ObjectName  Permissions
+-------      ---------                ----------  -----------
+UmRdpService NT AUTHORITY\INTERACTIVE localSystem   AllAccess
+[...]
+
+Show services where the current user has AllAccess.
+
+.OUTPUTS
+
+PowerUp.ServicePermission
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ServicePermission')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject]
+        $Services,
+
+        [Switch]
+        $All
+    )
+
+    BEGIN {
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
+        $TranslatedIdentityReferences = @{}
+    }
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $Service | Select-Object -ExpandProperty Dacl | Where-Object { $_.AceType -match 'Allow' } | ForEach-Object {
+
+                $Permissions = $_.AccessRights
+                $Sid = $_.SecurityIdentifier   
+                try {
+                    $i = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+                    $Principal = $i.Translate([System.Security.Principal.NTAccount]).Value
+                } catch {
+                    $Principal = $Sid
+                }
+                if( ($CurrentUserSids -contains $Sid) -or $All ) {
+                    $Out = New-Object PSObject
+                    $Out | Add-Member Noteproperty 'Service' $Service.Name
+                    $Out | Add-Member Noteproperty 'Principal' $Principal
+                    $Out | Add-Member Noteproperty 'ObjectName' $Service.ObjectName
+                    $Out | Add-Member Noteproperty 'Permissions' $Permissions
+                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.Principal')
+                    $Out
+                }
+            }
+        }
+    }
+}
+
 ########################################################
 #
 # Service abuse
