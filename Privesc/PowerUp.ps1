@@ -1877,6 +1877,7 @@ returning the service objects where the current user have the specified permissi
 Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
 License: BSD 3-Clause  
 Required Dependencies: Add-ServiceDacl  
+Edited by: Tobias Neitzel (@qtc-de)
 
 .DESCRIPTION
 
@@ -1885,6 +1886,9 @@ a service Dacl to the service object with Add-ServiceDacl. All group SIDs for th
 user are enumerated services where the user has some type of permission are filtered. The
 services are then filtered against a specified set of permissions, and services where the
 current user have the specified permissions are returned.
+Edit: The AllAccess permission enumeration was removed and the permission checks were
+rewritten to be more efficient. Removing AllAccess was neccessary, to make binary comparison
+easier and should have no drawbacks, as it is kind of useless to check for.
 
 .PARAMETER Name
 
@@ -1895,11 +1899,11 @@ An array of one or more service names to test against the specified permission s
 A manual set of permission to test again. One of:'QueryConfig', 'ChangeConfig', 'QueryStatus',
 'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', UserDefinedControl',
 'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity',
-'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead', 'AllAccess'
+'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead'.
 
 .PARAMETER PermissionSet
 
-A pre-defined permission set to test a specified service against. 'ChangeConfig', 'Restart', or 'AllAccess'.
+A pre-defined permission set to test a specified service against. 'ChangeConfig' or 'Restart'.
 
 .EXAMPLE
 
@@ -1939,11 +1943,11 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
         $Name,
 
         [String[]]
-        [ValidateSet('QueryConfig', 'ChangeConfig', 'QueryStatus', 'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', 'UserDefinedControl', 'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity', 'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead', 'AllAccess')]
+        [ValidateSet('QueryConfig', 'ChangeConfig', 'QueryStatus', 'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', 'UserDefinedControl', 'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity', 'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead')]
         $Permissions,
 
         [String]
-        [ValidateSet('ChangeConfig', 'Restart', 'AllAccess')]
+        [ValidateSet('ChangeConfig', 'Restart')]
         $PermissionSet = 'ChangeConfig'
     )
 
@@ -1968,26 +1972,29 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
             'GenericExecute'        = [uint32]'0x20000000'
             'GenericWrite'          = [uint32]'0x40000000'
             'GenericRead'           = [uint32]'0x80000000'
-            'AllAccess'             = [uint32]'0x000F01FF'
         }
 
         $CheckAllPermissionsInSet = $False
 
         if ($PSBoundParameters['Permissions']) {
-            $TargetPermissions = $Permissions
+            $TargetPermission = 0
+            foreach($Permission in $Permissions) {
+                $TargetPermission = $TargetPermission -bxor $AccessMask[$Permission]
+            }
         }
         else {
             if ($PermissionSet -eq 'ChangeConfig') {
-                $TargetPermissions = @('ChangeConfig', 'WriteDac', 'WriteOwner', 'GenericAll', ' GenericWrite', 'AllAccess')
+                $TargetPermission = 0x500c0002
             }
             elseif ($PermissionSet -eq 'Restart') {
-                $TargetPermissions = @('Start', 'Stop')
+                $TargetPermission = 0x30
                 $CheckAllPermissionsInSet = $True # so we check all permissions && style
             }
-            elseif ($PermissionSet -eq 'AllAccess') {
-                $TargetPermissions = @('GenericAll', 'AllAccess')
-            }
         }
+
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
     }
 
     PROCESS {
@@ -1998,36 +2005,17 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 
             if ($TargetService -and $TargetService.Dacl) {
 
-                # enumerate all group SIDs the current user is a part of
-                $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-                $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
-                $CurrentUserSids += $UserIdentity.User.Value
-
                 ForEach($ServiceDacl in $TargetService.Dacl) {
                     if ($CurrentUserSids -contains $ServiceDacl.SecurityIdentifier) {
 
                         if ($CheckAllPermissionsInSet) {
-                            $AllMatched = $True
-                            ForEach($TargetPermission in $TargetPermissions) {
-                                # check permissions && style
-                                if (($ServiceDacl.AccessRights -band $AccessMask[$TargetPermission]) -ne $AccessMask[$TargetPermission]) {
-                                    # Write-Verbose "Current user doesn't have '$TargetPermission' for $($TargetService.Name)"
-                                    $AllMatched = $False
-                                    break
-                                }
-                            }
-                            if ($AllMatched) {
+                            if (($ServiceDacl.AccessMask -band $TargetPermission) -eq $TargetPermission) {
                                 $TargetService
                             }
                         }
                         else {
-                            ForEach($TargetPermission in $TargetPermissions) {
-                                # check permissions || style
-                                if (($ServiceDacl.AceType -eq 'AccessAllowed') -and ($ServiceDacl.AccessRights -band $AccessMask[$TargetPermission]) -eq $AccessMask[$TargetPermission]) {
-                                    Write-Verbose "Current user has '$TargetPermission' for $IndividualService"
-                                    $TargetService
-                                    break
-                                }
+                            if (($ServiceDacl.AceType -eq 'AccessAllowed') -and ($ServiceDacl.AccessMask -band $TargetPermission)) {
+                                $TargetService
                             }
                         }
                     }
