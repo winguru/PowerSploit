@@ -759,6 +759,148 @@ PowerUp.ServicePermission
     }
 }
 
+
+function Test-ServiceDaclPermission {
+<#
+.SYNOPSIS
+
+Tests one or more passed services or service names against a given permission set,
+returning the service objects where the current user have the specified permissions.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies:
+
+.DESCRIPTION
+
+This function is basically a copy of the plain Test-ServiceDaclPermission cmdlet of PowerUp.
+However, PowerUp uses reflection to add the DACL properties to each service, which requires
+some additional code. This version of the function is assumed to be called with the PowerUp.Service
+objects obtained from calls to Get-ServiceReg. These have dacl added automaticall during creation
+and no additional functions or reflection is required.
+
+.PARAMETER Name
+
+An array of one or more service names to test against the specified permission set.
+
+.PARAMETER Permissions
+
+A manual set of permission to test again. One of:'QueryConfig', 'ChangeConfig', 'QueryStatus',
+'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', UserDefinedControl',
+'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity',
+'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead'.
+
+.PARAMETER PermissionSet
+
+A pre-defined permission set to test a specified service against. 'ChangeConfig' or 'Restart'.
+
+.EXAMPLE
+
+Get-ServiceReg | Test-ServiceDaclPermission | Show-ServicePermissions
+
+Service      Principal                ObjectName                                                                                Permissions
+-------      ---------                ----------                                                                                -----------
+UmRdpService NT AUTHORITY\INTERACTIVE localSystem     QueryConfig, ChangeConfig, QueryStatus, EnumerateDependents, Interrogate, ReadControl
+
+Return all service objects where the current user can modify the service configuration.
+
+.OUTPUTS
+
+ServiceProcess.ServiceController
+
+.LINK
+
+https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        [ValidateNotNullOrEmpty()]
+        $Services,
+
+        [String[]]
+        [ValidateSet('QueryConfig', 'ChangeConfig', 'QueryStatus', 'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', 'UserDefinedControl', 'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity', 'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead')]
+        $Permissions,
+
+        [String]
+        [ValidateSet('ChangeConfig', 'Restart')]
+        $PermissionSet = 'ChangeConfig'
+    )
+
+    BEGIN {
+        $AccessMask = @{
+            'QueryConfig'           = [uint32]'0x00000001'
+            'ChangeConfig'          = [uint32]'0x00000002'
+            'QueryStatus'           = [uint32]'0x00000004'
+            'EnumerateDependents'   = [uint32]'0x00000008'
+            'Start'                 = [uint32]'0x00000010'
+            'Stop'                  = [uint32]'0x00000020'
+            'PauseContinue'         = [uint32]'0x00000040'
+            'Interrogate'           = [uint32]'0x00000080'
+            'UserDefinedControl'    = [uint32]'0x00000100'
+            'Delete'                = [uint32]'0x00010000'
+            'ReadControl'           = [uint32]'0x00020000'
+            'WriteDac'              = [uint32]'0x00040000'
+            'WriteOwner'            = [uint32]'0x00080000'
+            'Synchronize'           = [uint32]'0x00100000'
+            'AccessSystemSecurity'  = [uint32]'0x01000000'
+            'GenericAll'            = [uint32]'0x10000000'
+            'GenericExecute'        = [uint32]'0x20000000'
+            'GenericWrite'          = [uint32]'0x40000000'
+            'GenericRead'           = [uint32]'0x80000000'
+        }
+
+        $CheckAllPermissionsInSet = $False
+
+        if ($PSBoundParameters['Permissions']) {
+            $TargetPermission = 0
+            foreach($permission in $Permissions) {
+                $TargetPermission = $TargetPermission -bxor $AccessMask[$Permission]
+            }
+        }
+        else {
+            if ($PermissionSet -eq 'ChangeConfig') {
+                $TargetPermission = 0x500c0002
+            }
+            elseif ($PermissionSet -eq 'Restart') {
+                $TargetPermission = 0x30
+                $CheckAllPermissionsInSet = $True # so we check all permissions && style
+            }
+        }
+
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
+    }
+
+    PROCESS {
+
+        ForEach($TargetService in $Services) {
+
+            ForEach($ServiceDacl in $TargetService.Dacl) {
+
+                if ($CurrentUserSids -contains $ServiceDacl.SecurityIdentifier) {
+
+                    if ($CheckAllPermissionsInSet) {
+                        if (($ServiceDacl.AccessMask -band $TargetPermission) -eq $TargetPermission) {
+                            $TargetService
+                        }
+                    }
+                    else {
+                        if (($ServiceDacl.AceType -eq 'AccessAllowed') -and ($ServiceDacl.AccessMask -band $TargetPermission)) {
+                            $TargetService
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 Add-Type @"
     [System.FlagsAttribute]
     public enum ServiceAccessRights : uint {
