@@ -2239,7 +2239,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
     if ($VulnServices) {
         ForEach ($Service in $VulnServices) {
 
-            $SplitPathArray = $Service.pathname.Split(' ')
+            $SplitPathArray = $Service.pathname.Trim().Split(' ')
             $ConcatPathArray = @()
             for ($i=0;$i -lt $SplitPathArray.Count; $i++) {
                         $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
