@@ -460,10 +460,10 @@ PowerUp.Service
     Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services' | ForEach-Object {
 
         $ServiceName = $_.PSChildName
-        $ImagePath = $_.GetValue("ImagePath")
+        $PathName = $_.GetValue("ImagePath")
         $Type = $_.GetValue("Type")
 
-        if( $ImagePath -eq $null ) {
+        if( $PathName -eq $null ) {
             if( $PSBoundParameters['Verbose'] ) {
                 Write-Warning "Skipping: $ServiceName [No Image Path]"
             }
@@ -503,7 +503,7 @@ PowerUp.Service
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
-        $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
         $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
         $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
@@ -530,8 +530,9 @@ Required Dependencies:
 This method is also implemented in the ordinary PowerUp script, but uses WMI to query
 service information. WMI access is often disabled for low privileged user accounts.
 Therefore, it is desireable to have an alternative method, which does not rely on WMI
-access. The objects that are expected as input for this method can be either obtained
-using Get-ServiceReg or Get-ServiceSc.
+access. By accepting PowerUp.Service objects as input parameters, it does not matter
+how these were initially received. The only important thing is, that they include the
+PathName property.
 
 .EXAMPLE
 
@@ -540,7 +541,7 @@ Get-ServiceReg | Get-UnquotedService
 Name             : AJRouter
 ServiceName      : AJRouter
 DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
-ImagePath        :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+PathName         :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
 ObjectName       : NT AUTHORITY\LocalService
 Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
 RequiredServices : 
@@ -573,14 +574,14 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
     PROCESS {
         ForEach($Service in $Services) {
 
-            if( $Service.ImagePath -eq $Null ) {
+            if( $Service.PathName -eq $Null ) {
                 Write-Warning "Skipping: $Service.Name [No Image Path]"
                 continue
             }
 
-            if( $Regex.Match($Service.ImagePath).Success ){
+            if( $Regex.Match($Service.PathName).Success ){
 
-                $SplitPathArray = $Service.ImagePath.Split(' ')
+                $SplitPathArray = $Service.PathName.Trim().Split(' ')
                 $ConcatPathArray = @()
                 for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
                             $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
@@ -616,8 +617,9 @@ Required Dependencies:
 This method is also implemented in the ordinary PowerUp script, but uses WMI to query
 service information. WMI access is often disabled for low privileged user accounts.
 Therefore, it is desireable to have an alternative method, which does not rely on WMI
-access. The objects that are expected as input for this method can be either obtained
-using Get-ServiceReg or Get-ServiceSc.
+access. By accepting PowerUp.Service objects as input parameters, it does not matter
+how these were initially received. The only important thing is, that they include the
+PathName property.
 
 .EXAMPLE
 
@@ -643,7 +645,7 @@ PowerUp.Service
 
         ForEach( $Service in $Services ) {
             $ServiceName = $Service.Name
-            $ServicePath = $Service.ImagePath
+            $ServicePath = $Service.PathName
             $ServiceStartName = $Service.ServiceName
 
             $count = 1
@@ -751,7 +753,7 @@ PowerUp.ServicePermission
                     $Out | Add-Member Noteproperty 'Principal' $Principal
                     $Out | Add-Member Noteproperty 'ObjectName' $Service.ObjectName
                     $Out | Add-Member Noteproperty 'Permissions' $Permissions
-                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.Principal')
+                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ServicePermission')
                     $Out
                 }
             }

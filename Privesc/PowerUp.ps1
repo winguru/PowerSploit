@@ -2045,222 +2045,6 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 #
 ########################################################
 
-
-function Get-UnquotedService {
-<#
-.SYNOPSIS
-
-Takes PowerUp.Service objects as input and returns services with unquoted image
-paths that are modifiable by the current user.
-
-Author: Tobias Neitzel (@qtc-de)
-License: BSD 3-Clause  
-Required Dependencies: 
-
-.DESCRIPTION
-
-This method is also implemented in the ordinary PowerUp script, but uses WMI to query
-service information. WMI access is often disabled for low privileged user accounts.
-Therefore, it is desireable to have an alternative method, which does not rely on WMI
-access. The objects that are expected as input for this method can be either obtained
-using Get-ServiceReg or Get-ServiceSc.
-
-.EXAMPLE
-
-Get-ServiceReg | Get-UnquotedService
-
-Name             : AJRouter
-ServiceName      : AJRouter
-DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
-PathName         :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
-ObjectName       : NT AUTHORITY\LocalService
-Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
-RequiredServices : 
-StartType        : Manual
-ModifiablePath1  : "C:\Program Files\AjRouter"
-ModifiablePath2  : "C:\Program Files\AjRouter\Routing Solutions\aj-start.exe"
-
-.OUTPUTS
-
-PowerUp.Service
-
-.LINK
-
-https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/windows/local/trusted_service_path.rb
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.UnquotedService')]
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject[]]
-        $Services
-    )
-
-    BEGIN {
-        $Regex = [regex]"^[^`"'].* .*\.exe"
-    }
-
-    PROCESS {
-        ForEach($Service in $Services) {
-
-            if( $Service.PathName -eq $Null ) {
-                Write-Warning "Skipping: $Service.Name [No Image Path]"
-                continue
-            }
-
-            if( $Regex.Match($Service.PathName).Success ){
-
-                $SplitPathArray = $Service.PathName.Split(' ')
-                $ConcatPathArray = @()
-                for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
-                            $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
-                }
-
-                $count = 1
-                $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
-                $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
-                    $Service | Add-Member -MemberType NoteProperty -Name "ModifiablePath$count" -Value "`"$($_.ModifiablePath)`"" -Force
-                    $count += 1
-                }
-                if( $count -gt 1 ) { 
-                    $Service 
-                }
-            }
-        }
-    }
-}
-
-
-function Get-ModifiableServiceFile {
-<#
-.SYNOPSIS
-
-Takes PowerUp.Service objects as input and returns services with modifiable service
-files.
-
-Author: Tobias Neitzel (@qtc-de)
-License: BSD 3-Clause  
-Required Dependencies: 
-
-.DESCRIPTION
-
-This method is also implemented in the ordinary PowerUp script, but uses WMI to query
-service information. WMI access is often disabled for low privileged user accounts.
-Therefore, it is desireable to have an alternative method, which does not rely on WMI
-access. The objects that are expected as input for this method can be either obtained
-using Get-ServiceReg or Get-ServiceSc.
-
-.EXAMPLE
-
-Get-ModifiableServiceFile
-
-Get a set of potentially exploitable service binares/config files.
-
-.OUTPUTS
-
-PowerUp.Service
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.Service')]
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject[]]
-        $Services
-    )
-
-    PROCESS {
-
-        ForEach( $Service in $Services ) {
-            $ServiceName = $Service.Name
-            $ServicePath = $Service.PathName
-            $ServiceStartName = $Service.ServiceName
-
-            $count = 1
-            $ServicePath | Get-ModifiablePath | ForEach-Object {
-                $Service | Add-Member -MemberType NoteProperty -Name "ModifiableFile$count" -Value "`"$($_.ModifiablePath)`"" -Force
-                $count += 1
-            }
-
-            if( $count -gt 1 ) { 
-                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
-                $Service 
-            }
-        }
-    }
-}
-
-
-function Get-ServiceDetail {
-<#
-.SYNOPSIS
-
-Returns detailed information about a specified service by querying the
-WMI win32_service class for the specified service name.
-
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
-
-.DESCRIPTION
-
-Takes an array of one or more service Names or ServiceProcess.ServiceController objedts on
-the pipeline object returned by Get-Service, extracts out the service name, queries the
-WMI win32_service class for the specified service for details like binPath, and outputs
-everything.
-
-.PARAMETER Name
-
-An array of one or more service names to query information for.
-
-.EXAMPLE
-
-Get-ServiceDetail -Name VulnSVC
-
-Gets detailed information about the 'VulnSVC' service.
-
-.EXAMPLE
-
-Get-Service VulnSVC | Get-ServiceDetail
-
-Gets detailed information about the 'VulnSVC' service.
-
-.OUTPUTS
-
-System.Management.ManagementObject
-#>
-
-    [OutputType('PowerUp.ModifiableService')]
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
-        [Alias('ServiceName')]
-        [String[]]
-        [ValidateNotNullOrEmpty()]
-        $Name
-    )
-
-    PROCESS {
-        ForEach($IndividualService in $Name) {
-            $TargetService = Get-Service -Name $IndividualService -ErrorAction Stop
-            if ($TargetService) {
-                Get-WmiObject -Class win32_service -Filter "Name='$($TargetService.Name)'" | Where-Object {$_} | ForEach-Object {
-                    try {
-                        $_
-                    }
-                    catch {
-                        Write-Verbose "Error: $_"
-                    }
-                }
-            }
-        }
-    }
-}
-
-
 function Get-ServiceReg {
 <#
 .SYNOPSIS
@@ -2360,7 +2144,7 @@ PowerUp.Service
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
-        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $Pathname
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
         $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
         $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
@@ -2369,6 +2153,255 @@ PowerUp.Service
         $Service
     }
 }
+
+function Get-UnquotedService {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with unquoted image
+paths that are modifiable by the current user.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. By accepting PowerUp.Service objects as input parameters, it does not matter
+how these were initially received. The only important thing is, that they include the
+PathName property.
+
+.EXAMPLE
+
+Get-ServiceReg | Get-UnquotedService
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
+PathName         :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+ObjectName       : NT AUTHORITY\LocalService
+Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+RequiredServices : 
+StartType        : Manual
+ModifiablePath1  : "C:\Program Files\AjRouter"
+ModifiablePath2  : "C:\Program Files\AjRouter\Routing Solutions\aj-start.exe"
+
+.OUTPUTS
+
+PowerUp.Service
+
+.LINK
+
+https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/windows/local/trusted_service_path.rb
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        $Services
+    )
+
+    BEGIN {
+        $Regex = [regex]"^[^`"'].* .*\.exe"
+    }
+
+    PROCESS {
+        ForEach($Service in $Services) {
+
+            if( $Service.PathName -eq $Null ) {
+                Write-Warning "Skipping: $Service.Name [No Image Path]"
+                continue
+            }
+
+            if( $Regex.Match($Service.PathName).Success ){
+
+                $SplitPathArray = $Service.PathName.Trim().Split(' ')
+                $ConcatPathArray = @()
+                for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
+                            $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
+                }
+
+                $count = 1
+                $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
+                $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
+                    $Service | Add-Member -MemberType NoteProperty -Name "ModifiablePath$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                    $count += 1
+                }
+                if( $count -gt 1 ) { 
+                    $Service 
+                }
+            }
+        }
+    }
+}
+
+
+function Get-ModifiableServiceFile {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects as input and returns services with modifiable service
+files.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method is also implemented in the ordinary PowerUp script, but uses WMI to query
+service information. WMI access is often disabled for low privileged user accounts.
+Therefore, it is desireable to have an alternative method, which does not rely on WMI
+access. By accepting PowerUp.Service objects as input parameters, it does not matter
+how these were initially received. The only important thing is, that they include the
+PathName property.
+
+.EXAMPLE
+
+Get-ModifiableServiceFile
+
+Get a set of potentially exploitable service binares/config files.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        $Services
+    )
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $ServiceName = $Service.Name
+            $ServicePath = $Service.PathName
+            $ServiceStartName = $Service.ServiceName
+
+            $count = 1
+            $ServicePath | Get-ModifiablePath | ForEach-Object {
+                $Service | Add-Member -MemberType NoteProperty -Name "ModifiableFile$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                $count += 1
+            }
+
+            if( $count -gt 1 ) { 
+                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
+                $Service 
+            }
+        }
+    }
+}
+
+
+function Show-ServicePermissions {
+<#
+.SYNOPSIS
+
+Takes PowerUp.Service objects and transforms their access permissions in a human readable format.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: 
+
+.DESCRIPTION
+
+This method takes PowerUp.Service objects and transforms them to PowerUp.ServicePermission objects.
+PowerUp.ServicePermission objects allow easy and organized access to the permissions of a service.
+Without any arguments, services where the current user has no access at all are not shown. Use the
+-All switch to include all services.
+
+.EXAMPLE
+
+Get-ServiceReg | Show-ServicePermissions
+
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions
+
+Service                  Principal                        ObjectName                                                                                                    Permissions
+-------                  ---------                        ----------                                                                                                    -----------
+AJRouter                 NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+AJRouter                 NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+ALG                      NT AUTHORITY\INTERACTIVE         NT AUTHORITY\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+ALG                      NT AUTHORITY\Authenticated Users NT AUTHORITY\LocalService                                                                              UserDefinedControl
+AppIDSvc                 NT AUTHORITY\INTERACTIVE         NT Authority\LocalService     QueryConfig, QueryStatus, EnumerateDependents, Interrogate, UserDefinedControl, ReadControl
+[...]
+
+Access permissions of the current user.
+
+.EXAMPLE
+
+Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'change') }
+
+PS C:\Users\IEUser> Get-ServiceReg | Show-ServicePermissions | Where-Object { ($_.ObjectName -match 'SYSTEM') -and ($_.Permissions -match 'all') }
+
+Service      Principal                ObjectName  Permissions
+-------      ---------                ----------  -----------
+UmRdpService NT AUTHORITY\INTERACTIVE localSystem   AllAccess
+[...]
+
+Show services where the current user has AllAccess.
+
+.OUTPUTS
+
+PowerUp.ServicePermission
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ServicePermission')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        $Services,
+
+        [Switch]
+        $All
+    )
+
+    BEGIN {
+        $UserIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $CurrentUserSids = $UserIdentity.Groups | Select-Object -ExpandProperty Value
+        $CurrentUserSids += $UserIdentity.User.Value
+        $TranslatedIdentityReferences = @{}
+    }
+
+    PROCESS {
+
+        ForEach( $Service in $Services ) {
+            $Service | Select-Object -ExpandProperty Dacl | Where-Object { $_.AceType -match 'Allow' } | ForEach-Object {
+
+                $Permissions = $_.AccessRights
+                $Sid = $_.SecurityIdentifier   
+                try {
+                    $i = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+                    $Principal = $i.Translate([System.Security.Principal.NTAccount]).Value
+                } catch {
+                    $Principal = $Sid
+                }
+                if( ($CurrentUserSids -contains $Sid) -or $All ) {
+                    $Out = New-Object PSObject
+                    $Out | Add-Member Noteproperty 'Service' $Service.Name
+                    $Out | Add-Member Noteproperty 'Principal' $Principal
+                    $Out | Add-Member Noteproperty 'ObjectName' $Service.ObjectName
+                    $Out | Add-Member Noteproperty 'Permissions' $Permissions
+                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ServicePermission')
+                    $Out
+                }
+            }
+        }
+    }
+}
+
 
 
 function Show-ServicePermissions {
