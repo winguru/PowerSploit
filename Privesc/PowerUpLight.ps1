@@ -558,11 +558,11 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.UnquotedService')]
+    [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject]
+        [PSObject[]]
         $Services
     )
 
@@ -631,11 +631,11 @@ PowerUp.Service
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.ModifiableService')]
+    [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject]
+        [PSObject[]]
         $Services
     )
 
@@ -718,7 +718,7 @@ PowerUp.ServicePermission
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject]
+        [PSObject[]]
         $Services,
 
         [Switch]

@@ -2072,7 +2072,7 @@ Get-ServiceReg | Get-UnquotedService
 Name             : AJRouter
 ServiceName      : AJRouter
 DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
-ImagePath        :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+PathName         :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
 ObjectName       : NT AUTHORITY\LocalService
 Access           : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
 RequiredServices : 
@@ -2094,7 +2094,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject]
+        [PSObject[]]
         $Services
     )
 
@@ -2105,14 +2105,14 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
     PROCESS {
         ForEach($Service in $Services) {
 
-            if( $Service.ImagePath -eq $Null ) {
+            if( $Service.PathName -eq $Null ) {
                 Write-Warning "Skipping: $Service.Name [No Image Path]"
                 continue
             }
 
-            if( $Regex.Match($Service.ImagePath).Success ){
+            if( $Regex.Match($Service.PathName).Success ){
 
-                $SplitPathArray = $Service.ImagePath.Split(' ')
+                $SplitPathArray = $Service.PathName.Split(' ')
                 $ConcatPathArray = @()
                 for ($i=1;$i -lt $SplitPathArray.Count; $i++) {
                             $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
@@ -2164,11 +2164,11 @@ PowerUp.Service
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.ModifiableService')]
+    [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
-        [PSObject]
+        [PSObject[]]
         $Services
     )
 
@@ -2176,7 +2176,7 @@ PowerUp.Service
 
         ForEach( $Service in $Services ) {
             $ServiceName = $Service.Name
-            $ServicePath = $Service.ImagePath
+            $ServicePath = $Service.PathName
             $ServiceStartName = $Service.ServiceName
 
             $count = 1
@@ -2190,183 +2190,6 @@ PowerUp.Service
                 $Service 
             }
         }
-    }
-}
-
-
-function Get-UnquotedServiceWmi {
-<#
-.SYNOPSIS
-
-Returns the name and binary path for services with unquoted paths
-that also have a space in the name.
-
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath, Test-ServiceDaclPermission  
-
-.DESCRIPTION
-
-Uses Get-WmiObject to query all win32_service objects and extract out
-the binary pathname for each. Then checks if any binary paths have a space
-and aren't quoted.
-
-.EXAMPLE
-
-Get-UnquotedServiceWmi
-
-Get a set of potentially exploitable services.
-
-.OUTPUTS
-
-PowerUp.UnquotedService
-
-.LINK
-
-https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/windows/local/trusted_service_path.rb
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.UnquotedService')]
-    [CmdletBinding()]
-    Param()
-
-    # find all paths to service .exe's that have a space in the path and aren't quoted
-    $VulnServices = Get-WmiObject -Class win32_service | Where-Object {
-        $_ -and ($Null -ne $_.pathname) -and ($_.pathname.Trim() -ne '') -and (-not $_.pathname.StartsWith("`"")) -and (-not $_.pathname.StartsWith("'")) -and ($_.pathname.Substring(0, $_.pathname.ToLower().IndexOf('.exe') + 4)) -match '.* .*'
-    }
-
-    if ($VulnServices) {
-        ForEach ($Service in $VulnServices) {
-
-            $SplitPathArray = $Service.pathname.Trim().Split(' ')
-            $ConcatPathArray = @()
-            for ($i=0;$i -lt $SplitPathArray.Count; $i++) {
-                        $ConcatPathArray += $SplitPathArray[0..$i] -join ' '
-            }
-
-            $ModifiableFiles = $ConcatPathArray | Get-ModifiablePath
-
-            $ModifiableFiles | Where-Object {$_ -and $_.ModifiablePath -and ($_.ModifiablePath -ne '') -and ($_.ModifiablePath -ne 'C:\')} | Foreach-Object {
-                $CanRestart = Test-ServiceDaclPermission -PermissionSet 'Restart' -Name $Service.name
-                $Out = New-Object PSObject
-                $Out | Add-Member Noteproperty 'ServiceName' $Service.name
-                $Out | Add-Member Noteproperty 'Path' $Service.pathname
-                $Out | Add-Member Noteproperty 'ModifiablePath' $_
-                $Out | Add-Member Noteproperty 'StartName' $Service.startname
-                $Out | Add-Member Noteproperty 'AbuseFunction' "Write-ServiceBinary -Name '$($Service.name)' -Path <HijackPath>"
-                $Out | Add-Member Noteproperty 'CanRestart' ([Bool]$CanRestart)
-                $Out | Add-Member Aliasproperty Name ServiceName
-                $Out.PSObject.TypeNames.Insert(0, 'PowerUp.UnquotedService')
-                $Out
-            }
-        }
-    }
-}
-
-
-function Get-ModifiableServiceFileWmi {
-<#
-.SYNOPSIS
-
-Enumerates all services and returns vulnerable service files.
-
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ModifiablePath  
-
-.DESCRIPTION
-
-Enumerates all services by querying the WMI win32_service class. For each service,
-it takes the pathname (aka binPath) and passes it to Get-ModifiablePath to determine
-if the current user has rights to modify the service binary itself or any associated
-arguments. If the associated binary (or any configuration files) can be overwritten,
-privileges may be able to be escalated.
-
-.EXAMPLE
-
-Get-ModifiableServiceFileWmi
-
-Get a set of potentially exploitable service binares/config files.
-
-.OUTPUTS
-
-PowerUp.ModifiablePath
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.ModifiableServiceFile')]
-    [CmdletBinding()]
-    Param()
-
-    Get-WMIObject -Class win32_service | Where-Object {$_ -and $_.pathname} | ForEach-Object {
-
-        $ServiceName = $_.name
-        $ServicePath = $_.pathname
-        $ServiceStartName = $_.startname
-
-        $ServicePath | Get-ModifiablePath | ForEach-Object {
-            $CanRestart = Test-ServiceDaclPermission -PermissionSet 'Restart' -Name $ServiceName
-            $Out = New-Object PSObject
-            $Out | Add-Member Noteproperty 'ServiceName' $ServiceName
-            $Out | Add-Member Noteproperty 'Path' $ServicePath
-            $Out | Add-Member Noteproperty 'ModifiableFile' $_.ModifiablePath
-            $Out | Add-Member Noteproperty 'ModifiableFilePermissions' $_.Permissions
-            $Out | Add-Member Noteproperty 'ModifiableFileIdentityReference' $_.IdentityReference
-            $Out | Add-Member Noteproperty 'StartName' $ServiceStartName
-            $Out | Add-Member Noteproperty 'AbuseFunction' "Install-ServiceBinary -Name '$ServiceName'"
-            $Out | Add-Member Noteproperty 'CanRestart' ([Bool]$CanRestart)
-            $Out | Add-Member Aliasproperty Name ServiceName
-            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableServiceFile')
-            $Out
-        }
-    }
-}
-
-
-function Get-ModifiableService {
-<#
-.SYNOPSIS
-
-Enumerates all services and returns services for which the current user can modify the binPath.
-
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ServiceDetail  
-
-.DESCRIPTION
-
-Enumerates all services using Get-Service and uses Test-ServiceDaclPermission to test if
-the current user has rights to change the service configuration.
-
-.EXAMPLE
-
-Get-ModifiableService
-
-Get a set of potentially exploitable services.
-
-.OUTPUTS
-
-PowerUp.ModifiablePath
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.ModifiableService')]
-    [CmdletBinding()]
-    Param()
-
-    Get-Service | Test-ServiceDaclPermission -PermissionSet 'ChangeConfig' | ForEach-Object {
-        $ServiceDetails = $_ | Get-ServiceDetail
-        $CanRestart = $_ | Test-ServiceDaclPermission -PermissionSet 'Restart'
-        $Out = New-Object PSObject
-        $Out | Add-Member Noteproperty 'ServiceName' $ServiceDetails.name
-        $Out | Add-Member Noteproperty 'Path' $ServiceDetails.pathname
-        $Out | Add-Member Noteproperty 'StartName' $ServiceDetails.startname
-        $Out | Add-Member Noteproperty 'AbuseFunction' "Invoke-ServiceAbuse -Name '$($ServiceDetails.name)'"
-        $Out | Add-Member Noteproperty 'CanRestart' ([Bool]$CanRestart)
-        $Out | Add-Member Aliasproperty Name ServiceName
-        $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
-        $Out
     }
 }
 
@@ -2494,10 +2317,10 @@ PowerUp.Service
     Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services' | ForEach-Object {
 
         $ServiceName = $_.PSChildName
-        $ImagePath = $_.GetValue("ImagePath")
+        $PathName = $_.GetValue("ImagePath")
         $Type = $_.GetValue("Type")
 
-        if( $ImagePath -eq $null ) {
+        if( $PathName -eq $null ) {
             if( $PSBoundParameters['Verbose'] ) {
                 Write-Warning "Skipping: $ServiceName [No Image Path]"
             }
@@ -2537,7 +2360,7 @@ PowerUp.Service
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
-        $Service | Add-Member -MemberType NoteProperty -Name ImagePath -Value  $_.GetValue("ImagePath")
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $Pathname
         $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
         $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
