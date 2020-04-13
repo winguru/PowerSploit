@@ -1923,9 +1923,15 @@ Test-ServiceDaclPermission -Permissions 'Start' -Name 'VulnSVC'
 
 Return the VulnSVC object if the current user has start permissions.
 
+.EXAMPLE
+
+Get-ServiceReg | Test-ServiceDaclPermission
+
+Return all service objects where the current user can modify the service configuration.
+
 .OUTPUTS
 
-ServiceProcess.ServiceController
+ServiceProcess.ServiceController or PowerUp.Service (if input object is also PowerUp.Service)
 
 .LINK
 
@@ -2001,7 +2007,11 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 
         ForEach($IndividualService in $Name) {
 
-            $TargetService = $IndividualService | Add-ServiceDacl
+            if( $IndividualService.Dacl -eq $null ) {
+                $TargetService = $IndividualService | Add-ServiceDacl
+            } else {
+                $TargetService = $IndividualService
+            }
 
             if ($TargetService -and $TargetService.Dacl) {
 
