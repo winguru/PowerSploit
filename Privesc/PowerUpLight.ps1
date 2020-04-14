@@ -408,7 +408,7 @@ function Get-ServiceReg {
 <#
 .SYNOPSIS
 
-Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry Hive.
+Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry hive.
 This circumvents restricted access to ordinary service enumeration like sc.exe or Get-Service.
 
 Author: Tobias Neitzel
@@ -429,7 +429,19 @@ Switch. Include services associated with kernel and filesystem drivers
 
 .EXAMPLE
 
-$s = Get-ServiceReg
+Get-ServiceReg 
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
+RequiredServices : 
+StartType        : Manual
+ObtainedBy       : Registry
+ObjectName       : NT AUTHORITY\LocalService
+PathName         : C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+Dacl             : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+
+[...]
 
 Get all non driver services that are available inside the registry.
 
@@ -437,7 +449,6 @@ Get all non driver services that are available inside the registry.
 
 PowerUp.Service
 #>
-
     [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     param(
@@ -462,54 +473,57 @@ PowerUp.Service
         $ServiceName = $_.PSChildName
         $PathName = $_.GetValue("ImagePath")
         $Type = $_.GetValue("Type")
+        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
 
-        if( $PathName -eq $null ) {
-            if( $PSBoundParameters['Verbose'] ) {
-                Write-Warning "Skipping: $ServiceName [No Image Path]"
-            }
-            return
-        } elseif( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
+        if( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
             if( $PSBoundParameters['Verbose'] ) {
                 Write-Warning "Skipping: $ServiceName [Driver]"
             }
             return
         }
 
-        try {
-            $Key = $_.OpenSubKey("Security")
-        } catch [System.Management.Automation.MethodException] {
-            Write-Warning "Skipping: $ServiceName [Access Denied]"
-            return
-        }
-
-        if( $Key -eq $null ) {
-            $SecurityDescriptor = $DefaultSD
-        } else {
-            try {
-                $Sec = $Key.GetValue("Security")
-                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
-                $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
-                    Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as [ServiceAccessRights]) -PassThru
-                }
-            } catch [System.Management.Automation.MethodException] {
-                Write-Warning "Skipping: $ServiceName [Parsing Error]"
-                return
-            }
-        }
-
-        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
-        
         $Service = New-Object PSObject
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
-        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
-        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
-        $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
-        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartupTypes[$StartupType]
-        $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
-        $Service
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value $StartupTypes[$StartupType]
+        $Service | Add-Member -MemberType NoteProperty -Name ObtainedBy -Value "Registry"
+        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value $_.GetValue("ObjectName")
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
+
+        try {
+            $Key = $_.OpenSubKey("Security")
+        } catch [System.Management.Automation.MethodException] {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Failure obtaining Security key for $ServiceName [Access Denied]"
+            }
+            $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+            return $Service
+        }
+
+        try {
+
+            if( $Key -eq $null ) {
+                $RawSecurityDescriptor = $DefaultSD
+            } else {
+                $Sec = $Key.GetValue("Security")
+                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+            }
+
+            $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
+            }
+            $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
+
+        } catch [System.Management.Automation.MethodException] {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Failure parsing Security key for $ServiceName [Parsing Error]"
+            }
+        } finally {
+            $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+            $Service
+        }
     }
 }
 
@@ -646,7 +660,11 @@ PowerUp.Service
         ForEach( $Service in $Services ) {
             $ServiceName = $Service.Name
             $ServicePath = $Service.PathName
-            $ServiceStartName = $Service.ServiceName
+            
+            if( $ServicePath -eq $null ) {
+                Write-Warning "Skipping: $ServiceName [No Image Path]"
+                continue
+            }
 
             $count = 1
             $ServicePath | Get-ModifiablePath | ForEach-Object {
@@ -766,8 +784,8 @@ function Test-ServiceDaclPermission {
 <#
 .SYNOPSIS
 
-Tests one or more passed services or service names against a given permission set,
-returning the service objects where the current user have the specified permissions.
+Expects a set of PowerUp.Service objects as input and returns PowerUp.Service objects where the current
+user has modification permissions.
 
 Author: Tobias Neitzel (@qtc-de)
 License: BSD 3-Clause  
@@ -776,14 +794,14 @@ Required Dependencies:
 .DESCRIPTION
 
 This function is basically a copy of the plain Test-ServiceDaclPermission cmdlet of PowerUp.
-However, PowerUp uses reflection to add the DACL properties to each service, which requires
-some additional code. This version of the function is assumed to be called with the PowerUp.Service
-objects obtained from calls to Get-ServiceReg. These have dacl added automaticall during creation
-and no additional functions or reflection is required.
+However, PowerUp used this method to do both: Obtaining the DACL and checking for vulnerable
+permissions. This is not flexible, as there are different methods obtaining the DACL of a service.
+This version of the function assumes PowerUp.Service objects that get a DACL property assigned during
+their creation.
 
-.PARAMETER Name
+.PARAMETER Services
 
-An array of one or more service names to test against the specified permission set.
+An array of PowerUp.Service objects.
 
 .PARAMETER Permissions
 
@@ -798,7 +816,7 @@ A pre-defined permission set to test a specified service against. 'ChangeConfig'
 
 .EXAMPLE
 
-Get-ServiceReg | Test-ServiceDaclPermission | Show-ServicePermissions
+Get-ServiceApi | Test-ServiceDaclPermission | Show-ServicePermissions
 
 Service      Principal                ObjectName                                                                                Permissions
 -------      ---------                ----------                                                                                -----------
@@ -808,11 +826,7 @@ Return all service objects where the current user can modify the service configu
 
 .OUTPUTS
 
-ServiceProcess.ServiceController
-
-.LINK
-
-https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
+PowerUp.Service
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
@@ -882,6 +896,13 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
     PROCESS {
 
         ForEach($TargetService in $Services) {
+
+            if( $TargetService.Dacl -eq $null ) {
+                if( $PSBoundParameters['Verbose'] ) {
+                    Write-Warning "Skipping: $TargetService.Name [No DACL]"
+                }
+                continue
+            }
 
             ForEach($ServiceDacl in $TargetService.Dacl) {
 

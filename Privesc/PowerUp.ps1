@@ -1631,122 +1631,6 @@ http://forum.sysinternals.com/tip-easy-way-to-enable-privileges_topic15745.html
 }
 
 
-function Add-ServiceDacl {
-<#
-.SYNOPSIS
-
-Adds a Dacl field to a service object returned by Get-Service.
-
-Author: Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
-
-.DESCRIPTION
-
-Takes one or more ServiceProcess.ServiceController objects on the pipeline and adds a
-Dacl field to each object. It does this by opening a handle with ReadControl for the
-service with using the GetServiceHandle Win32 API call and then uses
-QueryServiceObjectSecurity to retrieve a copy of the security descriptor for the service.
-
-.PARAMETER Name
-
-An array of one or more service names to add a service Dacl for. Passable on the pipeline.
-
-.EXAMPLE
-
-Get-Service | Add-ServiceDacl
-
-Add Dacls for every service the current user can read.
-
-.EXAMPLE
-
-Get-Service -Name VMTools | Add-ServiceDacl
-
-Add the Dacl to the VMTools service object.
-
-.OUTPUTS
-
-ServiceProcess.ServiceController
-
-.LINK
-
-https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('ServiceProcess.ServiceController')]
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
-        [Alias('ServiceName')]
-        [String[]]
-        [ValidateNotNullOrEmpty()]
-        $Name
-    )
-
-    BEGIN {
-        filter Local:Get-ServiceReadControlHandle {
-            [OutputType([IntPtr])]
-            Param(
-                [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-                [ValidateNotNullOrEmpty()]
-                [ValidateScript({ $_ -as 'ServiceProcess.ServiceController' })]
-                $Service
-            )
-
-            $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
-            $ReadControl = 0x00020000
-            $RawHandle = $GetServiceHandle.Invoke($Service, @($ReadControl))
-            $RawHandle
-        }
-    }
-
-    PROCESS {
-        ForEach($ServiceName in $Name) {
-
-            $IndividualService = Get-Service -Name $ServiceName -ErrorAction Stop
-
-            try {
-                Write-Verbose "Add-ServiceDacl IndividualService : $($IndividualService.Name)"
-                $ServiceHandle = Get-ServiceReadControlHandle -Service $IndividualService
-            }
-            catch {
-                $ServiceHandle = $Null
-                Write-Verbose "Error opening up the service handle with read control for $($IndividualService.Name) : $_"
-            }
-
-            if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
-                $SizeNeeded = 0
-
-                $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, @(), 0, [Ref] $SizeNeeded);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-
-                # 122 == The data area passed to a system call is too small
-                if ((-not $Result) -and ($LastError -eq 122) -and ($SizeNeeded -gt 0)) {
-                    $BinarySecurityDescriptor = New-Object Byte[]($SizeNeeded)
-
-                    $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, $BinarySecurityDescriptor, $BinarySecurityDescriptor.Count, [Ref] $SizeNeeded);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-
-                    if (-not $Result) {
-                        Write-Error ([ComponentModel.Win32Exception] $LastError)
-                    }
-                    else {
-                        $RawSecurityDescriptor = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList $BinarySecurityDescriptor, 0
-                        $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
-                            Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
-                        }
-                        Add-Member -InputObject $IndividualService -MemberType NoteProperty -Name Dacl -Value $Dacl -PassThru
-                    }
-                }
-                else {
-                    Write-Error ([ComponentModel.Win32Exception] $LastError)
-                }
-                $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
-            }
-        }
-    }
-}
-
-
 function Set-ServiceBinaryPath {
 <#
 .SYNOPSIS
@@ -1871,28 +1755,24 @@ function Test-ServiceDaclPermission {
 <#
 .SYNOPSIS
 
-Tests one or more passed services or service names against a given permission set,
-returning the service objects where the current user have the specified permissions.
+Expects a set of PowerUp.Service objects as input and returns PowerUp.Service objects where the current
+user has modification permissions.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
+Author: Tobias Neitzel (@qtc-de)
 License: BSD 3-Clause  
-Required Dependencies: Add-ServiceDacl  
-Edited by: Tobias Neitzel (@qtc-de)
+Required Dependencies:
 
 .DESCRIPTION
 
-Takes a service Name or a ServiceProcess.ServiceController on the pipeline, and first adds
-a service Dacl to the service object with Add-ServiceDacl. All group SIDs for the current
-user are enumerated services where the user has some type of permission are filtered. The
-services are then filtered against a specified set of permissions, and services where the
-current user have the specified permissions are returned.
-Edit: The AllAccess permission enumeration was removed and the permission checks were
-rewritten to be more efficient. Removing AllAccess was neccessary, to make binary comparison
-easier and should have no drawbacks, as it is kind of useless to check for.
+This function is basically a copy of the plain Test-ServiceDaclPermission cmdlet of PowerUp.
+However, PowerUp used this method to do both: Obtaining the DACL and checking for vulnerable
+permissions. This is not flexible, as there are different methods obtaining the DACL of a service.
+This version of the function assumes PowerUp.Service objects that get a DACL property assigned during
+their creation.
 
-.PARAMETER Name
+.PARAMETER Services
 
-An array of one or more service names to test against the specified permission set.
+An array of PowerUp.Service objects.
 
 .PARAMETER Permissions
 
@@ -1907,46 +1787,27 @@ A pre-defined permission set to test a specified service against. 'ChangeConfig'
 
 .EXAMPLE
 
-Get-Service | Test-ServiceDaclPermission
+Get-ServiceApi | Test-ServiceDaclPermission | Show-ServicePermissions
 
-Return all service objects where the current user can modify the service configuration.
-
-.EXAMPLE
-
-Get-Service | Test-ServiceDaclPermission -PermissionSet 'Restart'
-
-Return all service objects that the current user can restart.
-
-.EXAMPLE
-
-Test-ServiceDaclPermission -Permissions 'Start' -Name 'VulnSVC'
-
-Return the VulnSVC object if the current user has start permissions.
-
-.EXAMPLE
-
-Get-ServiceReg | Test-ServiceDaclPermission
+Service      Principal                ObjectName                                                                                Permissions
+-------      ---------                ----------                                                                                -----------
+UmRdpService NT AUTHORITY\INTERACTIVE localSystem     QueryConfig, ChangeConfig, QueryStatus, EnumerateDependents, Interrogate, ReadControl
 
 Return all service objects where the current user can modify the service configuration.
 
 .OUTPUTS
 
-ServiceProcess.ServiceController or PowerUp.Service (if input object is also PowerUp.Service)
-
-.LINK
-
-https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
+PowerUp.Service
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('ServiceProcess.ServiceController')]
+    [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
-        [Alias('ServiceName', 'Service')]
-        [String[]]
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
         [ValidateNotNullOrEmpty()]
-        $Name,
+        $Services,
 
         [String[]]
         [ValidateSet('QueryConfig', 'ChangeConfig', 'QueryStatus', 'EnumerateDependents', 'Start', 'Stop', 'PauseContinue', 'Interrogate', 'UserDefinedControl', 'Delete', 'ReadControl', 'WriteDac', 'WriteOwner', 'Synchronize', 'AccessSystemSecurity', 'GenericAll', 'GenericExecute', 'GenericWrite', 'GenericRead')]
@@ -1984,7 +1845,7 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 
         if ($PSBoundParameters['Permissions']) {
             $TargetPermission = 0
-            foreach($Permission in $Permissions) {
+            foreach($permission in $Permissions) {
                 $TargetPermission = $TargetPermission -bxor $AccessMask[$Permission]
             }
         }
@@ -2005,34 +1866,30 @@ https://rohnspowershellblog.wordpress.com/2013/03/19/viewing-service-acls/
 
     PROCESS {
 
-        ForEach($IndividualService in $Name) {
+        ForEach($TargetService in $Services) {
 
-            if( $IndividualService.Dacl -eq $null ) {
-                $TargetService = $IndividualService | Add-ServiceDacl
-            } else {
-                $TargetService = $IndividualService
+            if( $TargetService.Dacl -eq $null ) {
+                if( $PSBoundParameters['Verbose'] ) {
+                    Write-Warning "Skipping: $TargetService.Name [No DACL]"
+                }
+                continue
             }
 
-            if ($TargetService -and $TargetService.Dacl) {
+            ForEach($ServiceDacl in $TargetService.Dacl) {
 
-                ForEach($ServiceDacl in $TargetService.Dacl) {
-                    if ($CurrentUserSids -contains $ServiceDacl.SecurityIdentifier) {
+                if ($CurrentUserSids -contains $ServiceDacl.SecurityIdentifier) {
 
-                        if ($CheckAllPermissionsInSet) {
-                            if (($ServiceDacl.AccessMask -band $TargetPermission) -eq $TargetPermission) {
-                                $TargetService
-                            }
+                    if ($CheckAllPermissionsInSet) {
+                        if (($ServiceDacl.AccessMask -band $TargetPermission) -eq $TargetPermission) {
+                            $TargetService
                         }
-                        else {
-                            if (($ServiceDacl.AceType -eq 'AccessAllowed') -and ($ServiceDacl.AccessMask -band $TargetPermission)) {
-                                $TargetService
-                            }
+                    }
+                    else {
+                        if (($ServiceDacl.AceType -eq 'AccessAllowed') -and ($ServiceDacl.AccessMask -band $TargetPermission)) {
+                            $TargetService
                         }
                     }
                 }
-            }
-            else {
-                Write-Verbose "Error enumerating the Dacl for service $IndividualService"
             }
         }
     }
@@ -2049,7 +1906,7 @@ function Get-ServiceReg {
 <#
 .SYNOPSIS
 
-Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry Hive.
+Enumerates services using the HKLM:\SYSTEM\CurrentControlSet\Services registry hive.
 This circumvents restricted access to ordinary service enumeration like sc.exe or Get-Service.
 
 Author: Tobias Neitzel
@@ -2070,7 +1927,19 @@ Switch. Include services associated with kernel and filesystem drivers
 
 .EXAMPLE
 
-$s = Get-ServiceReg
+Get-ServiceReg 
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : @%SystemRoot%\system32\AJRouter.dll,-2
+RequiredServices : 
+StartType        : Manual
+ObtainedBy       : Registry
+ObjectName       : NT AUTHORITY\LocalService
+PathName         : C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+Dacl             : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+
+[...]
 
 Get all non driver services that are available inside the registry.
 
@@ -2078,7 +1947,6 @@ Get all non driver services that are available inside the registry.
 
 PowerUp.Service
 #>
-
     [OutputType('PowerUp.Service')]
     [CmdletBinding()]
     param(
@@ -2103,56 +1971,264 @@ PowerUp.Service
         $ServiceName = $_.PSChildName
         $PathName = $_.GetValue("ImagePath")
         $Type = $_.GetValue("Type")
+        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
 
-        if( $PathName -eq $null ) {
-            if( $PSBoundParameters['Verbose'] ) {
-                Write-Warning "Skipping: $ServiceName [No Image Path]"
-            }
-            return
-        } elseif( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
+        if( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
             if( $PSBoundParameters['Verbose'] ) {
                 Write-Warning "Skipping: $ServiceName [Driver]"
             }
             return
         }
 
-        try {
-            $Key = $_.OpenSubKey("Security")
-        } catch [System.Management.Automation.MethodException] {
-            Write-Warning "Skipping: $ServiceName [Access Denied]"
-            return
-        }
-
-        if( $Key -eq $null ) {
-            $SecurityDescriptor = $DefaultSD
-        } else {
-            try {
-                $Sec = $Key.GetValue("Security")
-                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
-                $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
-                    Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
-                }
-            } catch [System.Management.Automation.MethodException] {
-                Write-Warning "Skipping: $ServiceName [Parsing Error]"
-                return
-            }
-        }
-
-        $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
-        
         $Service = New-Object PSObject
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $ServiceName
         $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.GetValue("DisplayName")
-        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
-        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value  $_.GetValue("ObjectName")
-        $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
         $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.GetValue("DependOnService")
-        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $StartupTypes[$StartupType]
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value $StartupTypes[$StartupType]
+        $Service | Add-Member -MemberType NoteProperty -Name ObtainedBy -Value "Registry"
+        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value $_.GetValue("ObjectName")
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
+
+        try {
+            $Key = $_.OpenSubKey("Security")
+        } catch [System.Management.Automation.MethodException] {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Failure obtaining Security key for $ServiceName [Access Denied]"
+            }
+            $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+            return $Service
+        }
+
+        try {
+
+            if( $Key -eq $null ) {
+                $RawSecurityDescriptor = $DefaultSD
+            } else {
+                $Sec = $Key.GetValue("Security")
+                $RawSecurityDescriptor = New-Object Security.AccessControl.CommonSecurityDescriptor $false,$false,$Sec,0
+            }
+
+            $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
+            }
+            $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
+
+        } catch [System.Management.Automation.MethodException] {
+            if( $PSBoundParameters['Verbose'] ) {
+                Write-Warning "Failure parsing Security key for $ServiceName [Parsing Error]"
+            }
+        } finally {
+            $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+            $Service
+        }
+    }
+}
+
+
+function Get-ServiceApi {
+<#
+.SYNOPSIS
+
+Enumerates services using reflection. First, the function obtains available service names using the
+ServiceController.GetServices function. Then, it uses QueryServiceConfig of Advapi32 to obtain additional
+service information.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: PSReflect
+
+.DESCRIPTION
+
+This function utilizes different Windows APIs to enumerate services. To get all information for a service, the
+invoking user needs the ReadControl (0x20000) and QueryConfig (0x0001) permissions for that particular service.
+
+.PARAMETER Verbose
+
+Switch. Show warnings.
+
+.EXAMPLE
+
+Get-ServiceApi
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : AllJoyn Router Service
+RequiredServices : {}
+StartType        : Manual
+ObtainedBy       : API
+ObjectName       : NT AUTHORITY\LocalService
+PathName         : C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+Dacl             : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+
+Get all services that are available on the system.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    param()
+
+    Add-Type -AssemblyName system.serviceprocess
+    $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
+    $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
+    $QueryConfig = 0x00001
+    $ReadControl = 0x20000
+
+    $GetServices.Invoke($null, $null) | ForEach-Object {
+
+        $Service = New-Object PSObject
+        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.Name
+        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $_.ServiceName
+        $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.DisplayName
+        $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value  $_.RequiredServices
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $_.StartType
+        $Service | Add-Member -MemberType NoteProperty -Name ObtainedBy -Value  "API"
+
+        try {
+            $ServiceHandle = $GetServiceHandle.Invoke($_, @($QueryConfig))
+            $RequestedSize = 0
+            $Result = $Advapi32::QueryServiceConfig($ServiceHandle, [IntPtr]::Zero, 0,[Ref]$RequestedSize);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error();
+
+            if( ($LastError -eq 122) -and ($RequestedSize -gt 0)) {
+
+                [IntPtr]$Struct = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($RequestedSize)
+                $Result = $Advapi32::QueryServiceConfig($ServiceHandle, $Struct, $RequestedSize, [Ref]$RequestedSize);
+
+                if( $Result ) {
+                    $ServiceInfo = $Struct -as $SERVICE_INFORMATION
+                    $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value $ServiceInfo.lpServiceStartName
+                    $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $ServiceInfo.lpBinaryPathName
+                }
+            }
+        } catch {
+        } finally {
+            $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+        }
+
+        try {
+            $ServiceHandle = $GetServiceHandle.Invoke($_, @($ReadControl))
+            $RequestedSize = $null
+            $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, @(), 0, [Ref]$RequestedSize);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+            if(($LastError -eq 122) -and ($RequestedSize -gt 0)) {
+
+                $BinarySecurityDescriptor = New-Object Byte[]($RequestedSize)
+                $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, $BinarySecurityDescriptor, $BinarySecurityDescriptor.Count, [Ref] $RequestedSize);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+                if( $Result ) {
+                    $RawSecurityDescriptor = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList $BinarySecurityDescriptor, 0
+                    $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                        Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
+                    }
+                    $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
+                }
+            }
+        } catch {
+        } finally {
+            $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+        }
+
         $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
         $Service
     }
 }
+
+
+function Get-ServiceWmi {
+<#
+.SYNOPSIS
+
+Enumerates services using a mix of WMI access and reflection.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause  
+Required Dependencies: PSReflect
+
+.DESCRIPTION
+
+This function uses WMI access to enumerate the basic properties of available services (name, binpath, user, ...).
+However, to get the DACL of a service it still relies on Get-Service and Advapi32. The advantage of this function over
+Get-ServiceApi is, that it does not required QueryConfig (0x0001) permissions on a service to get its binary path and 
+object name. The downside is of course, that it requires WMI access.
+
+.PARAMETER Verbose
+
+Switch. Show warning messages.
+
+.EXAMPLE
+
+Get-ServiceWmi | select -First 1
+
+Name             : AJRouter
+ServiceName      : AJRouter
+DisplayName      : AllJoyn Router Service
+RequiredServices : {}
+StartType        : Manual
+ObtainedBy       : WMI
+ObjectName       : NT AUTHORITY\LocalService
+PathName         :  C:\Program Files\AjRouter\Routing Solutions\aj-start.exe
+Dacl             : {System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce, System.Security.AccessControl.CommonAce...}
+
+Get all services that are available on the system.
+
+.OUTPUTS
+
+PowerUp.Service
+#>
+
+    [OutputType('PowerUp.Service')]
+    [CmdletBinding()]
+    param()
+    
+    Add-Type -AssemblyName system.serviceprocess
+    $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
+    $ReadControl = 0x20000
+
+    Get-WmiObject -Class win32_service -ErrorAction SilentlyContinue | ForEach-Object {
+
+        $Service = New-Object PSObject
+        $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.Name
+        $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $_.Name
+        $Service | Add-Member -MemberType NoteProperty -Name DisplayName -Value $_.DisplayName
+        $Service | Add-Member -MemberType NoteProperty -Name RequiredServices -Value @()
+        $Service | Add-Member -MemberType NoteProperty -Name StartType -Value  $_.StartMode
+        $Service | Add-Member -MemberType NoteProperty -Name ObtainedBy -Value  "WMI"
+        $Service | Add-Member -MemberType NoteProperty -Name ObjectName -Value $_.StartName
+        $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $_.PathName
+
+        $s = Get-Service -Name $_.Name -ErrorAction SilentlyContinue
+        try {
+            $ServiceHandle = $GetServiceHandle.Invoke($s, @($ReadControl))
+            $RequestedSize = $null
+            $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, @(), 0, [Ref]$RequestedSize);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+            if(($LastError -eq 122) -and ($RequestedSize -gt 0)) {
+
+                $BinarySecurityDescriptor = New-Object Byte[]($RequestedSize)
+                $Result = $Advapi32::QueryServiceObjectSecurity($ServiceHandle, [Security.AccessControl.SecurityInfos]::DiscretionaryAcl, $BinarySecurityDescriptor, $BinarySecurityDescriptor.Count, [Ref] $RequestedSize);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+                if( $Result ) {
+                    $RawSecurityDescriptor = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList $BinarySecurityDescriptor, 0
+                    $Dacl = $RawSecurityDescriptor.DiscretionaryAcl | ForEach-Object {
+                        Add-Member -InputObject $_ -MemberType NoteProperty -Name AccessRights -Value ($_.AccessMask -as $ServiceAccessRights) -PassThru
+                    }
+                    $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
+                }
+            }
+        } catch {
+        } finally {
+            $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+        }
+
+        $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
+        $Service
+    }
+}
+
 
 function Get-UnquotedService {
 <#
@@ -2287,7 +2363,11 @@ PowerUp.Service
         ForEach( $Service in $Services ) {
             $ServiceName = $Service.Name
             $ServicePath = $Service.PathName
-            $ServiceStartName = $Service.ServiceName
+            
+            if( $ServicePath -eq $null ) {
+                Write-Warning "Skipping: $ServiceName [No Image Path]"
+                continue
+            }
 
             $count = 1
             $ServicePath | Get-ModifiablePath | ForEach-Object {
@@ -5253,6 +5333,7 @@ $FunctionDefinitions = @(
     (func advapi32 GetTokenInformation ([Bool]) @([IntPtr], [UInt32], [IntPtr], [UInt32], [UInt32].MakeByRefType()) -SetLastError),
     (func advapi32 ConvertSidToStringSid ([Int]) @([IntPtr], [String].MakeByRefType()) -SetLastError),
     (func advapi32 LookupPrivilegeName ([Int]) @([IntPtr], [IntPtr], [String].MakeByRefType(), [Int32].MakeByRefType()) -SetLastError),
+    (func advapi32 QueryServiceConfig ([Bool]) @([IntPtr], [IntPtr], [UInt32], [UInt32].MakeByRefType()) -SetLastError -Charset Unicode),
     (func advapi32 QueryServiceObjectSecurity ([Bool]) @([IntPtr], [Security.AccessControl.SecurityInfos], [Byte[]], [UInt32], [UInt32].MakeByRefType()) -SetLastError),
     (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode),
     (func advapi32 CloseServiceHandle ([Bool]) @([IntPtr]) -SetLastError),
@@ -5383,6 +5464,18 @@ $LUID_AND_ATTRIBUTES = struct $Module PowerUp.LuidAndAttributes @{
 $TOKEN_PRIVILEGES = struct $Module PowerUp.TokenPrivileges @{
     PrivilegeCount  = field 0 UInt32
     Privileges      = field 1 $LUID_AND_ATTRIBUTES.MakeArrayType() -MarshalAs @('ByValArray', 50)
+}
+
+$SERVICE_INFORMATION = struct $Module PowerUp.ServiceInformation @{
+        dwServiceType       = field 0 Uint32
+        dwStartType         = field 1 Uint32
+        dwErrorControl      = field 2 Uint32
+        lpBinaryPathName    = field 3 String -MarshalAs LPWSt
+        lpLoadOrderGroup    = field 4 String -MarshalAs LPWSt
+        dwTagID             = field 5 Uint32
+        lpDependencies      = field 6 String -MarshalAs LPWSt
+        lpServiceStartName  = field 7 String -MarshalAs LPWSt
+        lpDisplayName       = field 8 String -MarshalAs LPWSt
 }
 
 $Types = $FunctionDefinitions | Add-Win32Type -Module $Module -Namespace 'PowerUp.NativeMethods'
