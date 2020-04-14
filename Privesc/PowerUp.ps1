@@ -5195,7 +5195,7 @@ detailing any discovered issues.
     Param(
         [ValidateSet('Object','List','HTML')]
         [String]
-        $Format = 'Object',
+        $Format = 'List',
 
         [Switch]
         $HTMLReport
@@ -5215,17 +5215,24 @@ detailing any discovered issues.
     }
 
     Write-Host "[+] Running Invoke-PrivescAudit"
-    Write-Host "[+] Enumerating Services. This may take some time... " -NoNewline
+    Write-Host "[+] Enumerating services. This may take some time... "
 
     # All service checks operate on an array of PowerUp.Service objects. We only obtain this array once to improve efficiency.
     # That beeing said, the obtain the Service array in three different ways, merge the results and then filter unique service
     # objects. This way, chances of missing a vulnerable service get reduced.
+    Write-Host "[+]     Enumerating services via registry... " -NoNewline
     $S1 = Get-ServiceReg
+    Write-Host "done."
+
+    Write-Host "[+]     Enumerating services via WMI... " -NoNewline
     $S2 = Get-ServiceWmi
+    Write-Host "done."
+
+    Write-Host "[+]     Enumerating services via Advapi32... " -NoNewline
     $S3 = Get-ServiceApi
+    Write-Host "done."
     $Services = $S1 + $S2 + $S3
     $Services = $Services | Group-Object "Name","Dacl" | ForEach-Object {$_.Group | Select -First 1}
-    Write-Host "done."
 
     Write-Host "[+] $($Services.Length) services identified."
     Write-Host "[+] Running Privilege Escalation Checks."
