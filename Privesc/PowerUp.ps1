@@ -861,7 +861,7 @@ a modifiable path.
                     if ($ParentPath -and (Test-Path -Path $ParentPath)) {
                         $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                     } else {
-                        Write-Warning "Skipping: $TempPath [Not Found]"
+                        Write-Verbose "Skipping: $TempPath [Not Found]"
                     }
                 }
             }
@@ -908,7 +908,7 @@ a modifiable path.
                     $Acl = Get-Acl -Path $CandidatePath -ErrorAction Stop
                     $Owner = $Acl.Owner;
                 } catch [System.UnauthorizedAccessException] {
-                    Write-Warning "Skipping: $CandidatePath [Access Denied]"
+                    Write-Verbose "Skipping: $CandidatePath [Access Denied]"
                     continue
                 }
 
@@ -1869,9 +1869,7 @@ PowerUp.Service
         ForEach($TargetService in $Services) {
 
             if( $TargetService.Dacl -eq $null ) {
-                if( $PSBoundParameters['Verbose'] ) {
-                    Write-Warning "Skipping: $TargetService.Name [No DACL]"
-                }
+                Write-Verbose "Skipping: $($TargetService.Name) [No DACL]"
                 continue
             }
 
@@ -1974,9 +1972,7 @@ PowerUp.Service
         $StartupType = if($_.GetValue("Start") -eq $null) { "999" } else { $_.GetValue("Start") }
 
         if( ($Type -band  0x3) -and (-not $IncludeDrivers) ){
-            if( $PSBoundParameters['Verbose'] ) {
-                Write-Warning "Skipping: $ServiceName [Driver]"
-            }
+            Write-Verbose "Skipping: $ServiceName [Driver]"
             return
         }
 
@@ -1993,9 +1989,7 @@ PowerUp.Service
         try {
             $Key = $_.OpenSubKey("Security")
         } catch [System.Management.Automation.MethodException] {
-            if( $PSBoundParameters['Verbose'] ) {
-                Write-Warning "Failure obtaining Security key for $ServiceName [Access Denied]"
-            }
+            Write-Verbose "Failure obtaining Security key for $ServiceName [Access Denied]"
             $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
             return $Service
         }
@@ -2015,9 +2009,7 @@ PowerUp.Service
             $Service | Add-Member -MemberType NoteProperty -Name Dacl -Value  $Dacl
 
         } catch [System.Management.Automation.MethodException] {
-            if( $PSBoundParameters['Verbose'] ) {
-                Write-Warning "Failure parsing Security key for $ServiceName [Parsing Error]"
-            }
+            Write-Verbose "Failure parsing Security key for $ServiceName [Parsing Error]"
         } finally {
             $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
             $Service
@@ -2291,7 +2283,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/wind
         ForEach($Service in $Services) {
 
             if( $Service.PathName -eq $Null ) {
-                Write-Warning "Skipping: $Service.Name [No Image Path]"
+                Write-Verbose "Skipping: $($Service.Name) [No Image Path]"
                 continue
             }
 
@@ -2365,7 +2357,7 @@ PowerUp.Service
             $ServicePath = $Service.PathName
             
             if( $ServicePath -eq $null ) {
-                Write-Warning "Skipping: $ServiceName [No Image Path]"
+                Write-Verbose "Skipping: $ServiceName [No Image Path]"
                 continue
             }
 
@@ -3826,7 +3818,7 @@ a modifiable registry path.
                 # This will not work if the leaf of the missing path contains a forward slash
                 $ParentPath = Split-Path -Path $CandidatePath -Parent  -ErrorAction SilentlyContinue
                 if (-not ($ParentPath -and (Test-Path -Path $ParentPath)) ) {
-                    Write-Warning "Skipping: $CandidatePath [Not Found]"
+                    Write-Verbose "Skipping: $CandidatePath [Not Found]"
                     continue
                 } else {
                     $CandidatePath = $ParentPath
@@ -3839,7 +3831,7 @@ a modifiable registry path.
                 $Acl = $Key.GetAccessControl()
                 $Owner = $Acl.Owner;
             } catch [System.UnauthorizedAccessException] {
-                Write-Warning "Skipping: $CandidatePath [Access Denied]"
+                Write-Verbose "Skipping: $CandidatePath [Access Denied]"
                 continue
             }
 
@@ -5198,13 +5190,13 @@ Runs all escalation checks and outputs a status report to SYSTEM.username.html
 detailing any discovered issues.
 
 #>
-
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
     [CmdletBinding()]
     Param(
         [ValidateSet('Object','List','HTML')]
         [String]
         $Format = 'Object',
+
         [Switch]
         $HTMLReport
     )
@@ -5222,10 +5214,23 @@ detailing any discovered issues.
         ConvertTo-HTML -Head $Header -Body "<H1>PowerUp report for '$($Env:ComputerName).$($Env:UserName)'</H1>" | Out-File $HtmlReportFile
     }
 
-    Write-Verbose "Running Invoke-PrivescAudit"
+    Write-Host "[+] Running Invoke-PrivescAudit"
+    Write-Host "[+] Enumerating Services. This may take some time... " -NoNewline
+
+    # All service checks operate on an array of PowerUp.Service objects. We only obtain this array once to improve efficiency.
+    # That beeing said, the obtain the Service array in three different ways, merge the results and then filter unique service
+    # objects. This way, chances of missing a vulnerable service get reduced.
+    $S1 = Get-ServiceReg
+    $S2 = Get-ServiceWmi
+    $S3 = Get-ServiceApi
+    $Services = $S1 + $S2 + $S3
+    $Services = $Services | Group-Object "Name","Dacl" | ForEach-Object {$_.Group | Select -First 1}
+    Write-Host "done."
+
+    Write-Host "[+] $($Services.Length) services identified."
+    Write-Host "[+] Running Privilege Escalation Checks."
 
     $Checks = @(
-        # Initial admin checks
         @{
             Type    = 'User Has Local Admin Privileges'
             Command = { if (([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")){ New-Object PSObject } }
@@ -5239,26 +5244,23 @@ detailing any discovered issues.
             Type       = 'Process Token Privileges'
             Command    = { Get-ProcessTokenPrivilege -Special | Where-Object {$_} }
         },
-        # Service checks
         @{
             Type    = 'Unquoted Service Paths'
-            Command = { Get-UnquotedServiceWmi }
+            Command = { $Services | Get-UnquotedService }
         },
         @{
             Type    = 'Modifiable Service Files'
-            Command = { Get-ModifiableServiceFileWmi }
+            Command = { $Services | Get-ModifiableServiceFile }
         },
         @{
             Type    = 'Modifiable Services'
-            Command = { Get-ModifiableService }
+            Command = { $Services | Test-ServiceDaclPermission }
         },
-        # DLL hijacking
         @{
             Type        = '%PATH% .dll Hijacks'
             Command     = { Find-PathDLLHijack }
             AbuseScript = { "Write-HijackDll -DllPath '$($_.ModifiablePath)\wlbsctrl.dll'" }
         },
-        # Registry checks
         @{
             Type        = 'AlwaysInstallElevated Registry Key'
             Command     = { if (Get-RegistryAlwaysInstallElevated){ New-Object PSObject } }
@@ -5272,7 +5274,6 @@ detailing any discovered issues.
             Type    = 'Modifiable Registry Autorun'
             Command = { Get-ModifiableRegistryAutoRun }
         },
-        # Other checks
         @{
             Type    = 'Modifiable Scheduled Task Files'
             Command = { Get-ModifiableScheduledTaskFile }
@@ -5300,17 +5301,20 @@ detailing any discovered issues.
     )
 
     ForEach($Check in $Checks){
-        Write-Verbose "Checking for $($Check.Type)..."
-        $Results = . $Check.Command
+        if( $PSBoundParameters['Verbose'] ) {
+            $Results = . $Check.Command -Verbose
+        } else {
+            $Results = . $Check.Command
+        }
         $Results | Where-Object {$_} | ForEach-Object {
-            $_ | Add-Member Noteproperty 'Check' $Check.Type
+            $_ | Add-Member Noteproperty 'Check' $Check.Type -Force
             if ($Check.AbuseScript){
                 $_ | Add-Member Noteproperty 'AbuseFunction' (. $Check.AbuseScript)
             }
         }
         switch($Format){
             Object { $Results }
-            List   { "`n`n[*] Checking for $($Check.Type)..."; $Results | Format-List }
+            List   { "[*] Checking for $($Check.Type)..."; $Results | Format-List }
             HTML   { $Results | ConvertTo-HTML -Head $Header -Body "<H2>$($Check.Type)</H2>" | Out-File -Append $HtmlReportFile }
         }
     }
