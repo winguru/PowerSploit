@@ -2368,7 +2368,7 @@ PowerUp.Service
             }
 
             if( $count -gt 1 ) { 
-                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiableService')
+                $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
                 $Service 
             }
         }
@@ -3755,7 +3755,7 @@ HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\vds\Alignment              
 
 .OUTPUTS
 
-PowerUp.TokenPrivilege.ModifiableReg
+PowerUp.ModifiableReg
 
 Custom PSObject containing the Permissions, Owner, ModifiablePath and IdentityReference for
 a modifiable registry path.
@@ -3875,6 +3875,47 @@ a modifiable registry path.
         }
     }
 }
+
+
+function Get-ModifiableRegistryService {
+<#
+.SYNOPSIS
+
+Checks for modifiable registry keys inside the HKLM:\SYSTEM\CurrentControlSet\Services\
+hive.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiableReg
+
+.DESCRIPTION
+
+Checks for modifiable registry keys inside the HKLM:\SYSTEM\CurrentControlSet\Services\
+hive. The check is done recursivly, which leads to several irrelevant keys being reported.
+However, since it is not possible to know the security relevant keys in advance, this is
+the only way to get a reliable result.
+
+.EXAMPLE
+
+Get-ModifiableRegistryService
+
+Get modifiable registry keys from the HLKM:\SYSTEM\CurrentControlSet\Services\ hive.
+
+.OUTPUTS
+
+PowerUp.ModifiableReg
+
+Custom PSObject containing the Permissions, Owner, ModifiablePath and IdentityReference for
+a modifiable registry path.
+#>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ModifiableReg')]
+    [CmdletBinding()]
+    Param()
+
+    Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Services -Recurse -ErrorAction SilentlyContinue | Get-ModifiableReg
+}
+
 
 function Get-RegistryAlwaysInstallElevated {
 <#
@@ -5304,6 +5345,10 @@ detailing any discovered issues.
         @{
             Type    = 'Cached GPP Files'
             Command = { Get-CachedGPPPassword | Where-Object {$_} }
+        },
+        @{
+            Type    = 'Modifiable Registry Service Keys'
+            Command = { Get-ModifiableRegistryService }
         }
     )
 
