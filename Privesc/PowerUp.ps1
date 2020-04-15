@@ -4208,6 +4208,57 @@ Custom PSObject containing results.
 }
 
 
+function Get-ScheduledTasks {
+<#
+.SYNOPSIS
+
+Uses schtasks.exe to enumerate all configured scheduled tasks on the system.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause
+Required Dependencies: None
+
+.EXAMPLE
+
+Get-ScheduledTasks 
+
+HostName                             : MSEDGEWIN10
+TaskName                             : \OneDrive Standalone Update Task-S-1-5-21-3461203602-4096304019-2269080069-1000
+Next Run Time                        : 4/16/2020 5:58:30 PM
+Status                               : Ready
+Logon Mode                           : Interactive only
+Last Run Time                        : 4/15/2020 7:07:35 AM
+[...]
+
+Finds all available scheduled tasks.
+
+.OUTPUTS
+
+PowerUp.ScheduledTask
+
+Array of PowerUp.ScheduledTask objects
+#>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.SCheduledTask')]
+    [CmdletBinding()]
+    Param()
+
+    $TmpFile = New-TemporaryFile
+    schtasks.exe /query /fo CSV /v > $TmpFile
+    $Tasks = Import-Csv $TmpFile
+
+    ForEach($Task in $Tasks) {
+
+        if( $Task.Taskname -eq "TaskName" ) {
+            continue;
+        }
+
+        $Task.PSObject.TypeNames.Insert(0, 'PowerUp.ScheduledTask')
+        $Task
+    }
+}
+
+
 function Get-UnattendedInstallFile {
 <#
 .SYNOPSIS
@@ -4235,7 +4286,6 @@ PowerUp.UnattendedInstallFile
 
 Custom PSObject containing results.
 #>
-
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
     [OutputType('PowerUp.UnattendedInstallFile')]
     [CmdletBinding()]
