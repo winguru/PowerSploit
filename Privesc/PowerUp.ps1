@@ -5441,6 +5441,10 @@ detailing any discovered issues.
             Command = { Get-ModifiableScheduledTaskFile }
         },
         @{
+            Type    = 'Modifiable Scheduled Task Files2'
+            Command = { Get-ScheduledTasks | Get-ModifiableScheduledTaskFile2 }
+        },
+        @{
             Type    = 'Unattended Install Files'
             Command = { Get-UnattendedInstallFile }
         },
