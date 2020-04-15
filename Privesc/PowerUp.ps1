@@ -4239,13 +4239,20 @@ PowerUp.ScheduledTask
 Array of PowerUp.ScheduledTask objects
 #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
-    [OutputType('PowerUp.SCheduledTask')]
+    [OutputType('PowerUp.ScheduledTask')]
     [CmdletBinding()]
     Param()
 
     $TmpFile = New-TemporaryFile
-    schtasks.exe /query /fo CSV /v > $TmpFile
-    $Tasks = Import-Csv $TmpFile
+
+    try {
+        schtasks.exe /query /fo CSV /v > $TmpFile
+        $Tasks = Import-Csv $TmpFile
+    } catch {
+        Write-Verbose "Error enumerating scheduled tasks using schtasks.exe"
+        Write-Verbose $_
+        return
+    }
 
     ForEach($Task in $Tasks) {
 
@@ -4257,6 +4264,63 @@ Array of PowerUp.ScheduledTask objects
         $Task
     }
 }
+
+
+function Get-ModifiableScheduledTaskFile2 {
+<#
+.SYNOPSIS
+
+Takes an array of PowerUp.ScheduledTask objects an checks whether components of the
+executable path are modifiable by the current user.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause
+Required Dependencies: None
+
+.EXAMPLE
+
+Get-ScheduledTasks | Get-ModifiableScheduledTaskFile2
+
+HostName                             : MSEDGEWIN10
+TaskName                             : \OneDrive Standalone Update Task-S-1-5-21-3461203602-4096304019-2269080069-1000
+Next Run Time                        : 4/16/2020 8:19:37 PM
+Status                               : Ready
+Logon Mode                           : Interactive only
+ModifiablePath                       : @{ModifiablePath=C:\Users\IEUser\AppData\Local\Microsoft\OneDrive\OneDriveStandaloneUpdater.exe}
+[...]
+
+Finds all scheduled tasks that contain modifiable components inside their execute path.
+
+.OUTPUTS
+
+PowerUp.ScheduledTask
+#>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.ScheduledTask')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        $ScheduledTask
+    )
+    
+    PROCESS {
+
+        ForEach($Task in $ScheduledTask) {
+        
+            $ExecPath = $Task.'Task To Run'
+            if( ($ExecPath -eq $null) -or ($ExecPath -eq "") -or ($ExecPath -eq "COM handler") ) {
+                Write-Verbose "Skipping: $($Task.TaskName) [No Exec Path]"
+                continue
+            }
+
+            $ExecPath | Get-ModifiablePath | ForEach-Object {
+                $Task | Add-Member Noteproperty 'ModifiablePath' $_
+                $Task
+            }
+        }
+    }
+}   
 
 
 function Get-UnattendedInstallFile {
