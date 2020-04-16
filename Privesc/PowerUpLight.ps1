@@ -45,7 +45,7 @@ C:\Temp\config.ini         {ReadAttributes, ReadCo... NT AUTHORITY\Authentic...
 
 .EXAMPLE
 
-Get-ChildItem C:\ProgramData\ -File -Recurse -ErrorAction SilentlyContinue | Get-ModifiablePath -Literal
+Get-ChildItem C:\ProgramData -File -Recurse -ErrorAction SilentlyContinue | Get-ModifiablePath -Literal
 
 ModifiablePath                                            Owner                  IdentityReference        Permissions                                                                           
 --------------                                            -----                  -----------------        -----------                                                                           
@@ -131,7 +131,7 @@ a modifiable path.
                     if ($ParentPath -and (Test-Path -Path $ParentPath)) {
                         $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                     } else {
-                        Write-Warning "Skipping: $TempPath [Not Found]"
+                        Write-Verbose "Skipping: $TempPath [Not Found]"
                     }
                 }
             }
@@ -177,8 +177,31 @@ a modifiable path.
                 try {
                     $Acl = Get-Acl -Path $CandidatePath -ErrorAction Stop
                     $Owner = $Acl.Owner;
+                    
+                    if( $Owner -notmatch '^S-1-5.*' ) {
+                        if( -not $TranslatedIdentityReferences[$Owner] ) {
+                            $IdentityUser = New-Object System.Security.Principal.NTAccount($Owner)
+                            $TranslatedIdentityReferences[$Owner] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                        }
+                        $IdentitySID = $TranslatedIdentityReferences[$Owner]
+                    } else {
+                        $IdentitySID = $Owner
+                    }
+
+                    # If we are owner, we have implicit full control over the object. Only the Owner property is imporant here, as the security group of an object
+                    # gets ignored (https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-2000-server/cc961983(v=technet.10)?redirectedfrom=MSDN
+                    if( $CurrentUserSids -contains $IdentitySID ) {
+                        $Out = New-Object PSObject
+                        $Out | Add-Member Noteproperty 'ModifiablePath' $CandidatePath
+                        $out | Add-Member Noteproperty 'Owner' $Owner
+                        $Out | Add-Member Noteproperty 'IdentityReference' $Owner
+                        $Out | Add-Member Noteproperty 'Permissions' @('Owner')
+                        $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiablePath')
+                        $Out
+                    }
+
                 } catch [System.UnauthorizedAccessException] {
-                    Write-Warning "Skipping: $CandidatePath [Access Denied]"
+                    Write-Verbose "Skipping: $CandidatePath [Access Denied]"
                     continue
                 }
 
