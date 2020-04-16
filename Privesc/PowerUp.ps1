@@ -4360,8 +4360,12 @@ PowerUp.ScheduledTask
                 continue
             }
 
+            $Count = 0
             $ExecPath | Get-ModifiablePath | ForEach-Object {
-                $Task | Add-Member Noteproperty 'ModifiablePath' $_
+                $Count += 1
+                $Task | Add-Member Noteproperty "ModifiablePath$Count" $_
+            }
+            if( $Task.ModifiablePath1 -ne $Null ) {
                 $Task
             }
         }
