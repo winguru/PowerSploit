@@ -5427,20 +5427,21 @@ detailing any discovered issues.
     # objects. This way, chances of missing a vulnerable service get reduced.
     Write-Host "[+]     Enumerating services via registry... " -NoNewline
     $S1 = Get-ServiceReg
-    Write-Host "done."
+    Write-Host "done. [$($S1.Length) services found]"
 
     Write-Host "[+]     Enumerating services via WMI... " -NoNewline
     $S2 = Get-ServiceWmi
-    Write-Host "done."
+    Write-Host "done. [$($S2.Length) services found]"
 
     Write-Host "[+]     Enumerating services via Advapi32... " -NoNewline
     $S3 = Get-ServiceApi
-    Write-Host "done."
+    Write-Host "done. [$($S3.Length) services found]"
+
     $Services = $S1 + $S2 + $S3
     $Services = $Services | Group-Object "Name","Dacl" | ForEach-Object {$_.Group | Select -First 1}
 
-    Write-Host "[+] $($Services.Length) services identified."
-    Write-Host "[+] Running Privilege Escalation Checks."
+    Write-Host "[+] $($Services.Length) unique services identified."
+    Write-Host "[+] Running Privilege Escalation Checks.`n"
 
     $Checks = @(
         @{
