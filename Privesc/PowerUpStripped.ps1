@@ -1125,6 +1125,10 @@ function Show-ServicePermissions {
     }
     PROCESS {
         ForEach( $Service in $Services ) {
+            if( $Service.Dacl -eq $Null ) {
+                Write-Verbose "Skipping: $($Service.Name) [No Dacl Property]"
+                continue
+            }
             $Service | Select-Object -ExpandProperty Dacl | Where-Object { $_.AceType -match 'Allow' } | ForEach-Object {
                 $Permissions = $_.AccessRights
                 $Sid = $_.SecurityIdentifier   
