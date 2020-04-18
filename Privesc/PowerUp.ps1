@@ -858,7 +858,7 @@ a modifiable path.
                 else {
                     # if the path doesn't exist, check if the parent folder allows for modification
                     $ParentPath = Split-Path -Path $TempPath -Parent  -ErrorAction SilentlyContinue
-                    if ($ParentPath -and (Test-Path -Path $ParentPath)) {
+                    if ($ParentPath -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) {
                         $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                     } else {
                         Write-Verbose "Skipping: $TempPath [Not Found]"
@@ -884,7 +884,7 @@ a modifiable path.
                                     # if the path doesn't exist, check if the parent folder allows for modification
                                     try {
                                         $ParentPath = (Split-Path -Path $TempPath -Parent -ErrorAction SilentlyContinue).Trim()
-                                        if ($ParentPath -and ($ParentPath -ne '') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
+                                        if ($ParentPath -and ($ParentPath -ne '') -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) {
                                             $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                                         }
                                     }
@@ -3753,7 +3753,7 @@ a modifiable registry path.
                 # if the path doesn't exist, check if the parent folder allows for modification.
                 # This will not work if the leaf of the missing path contains a forward slash
                 $ParentPath = Split-Path -Path $CandidatePath -Parent  -ErrorAction SilentlyContinue
-                if (-not ($ParentPath -and (Test-Path -Path $ParentPath)) ) {
+                if (-not ($ParentPath -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) ) {
                     Write-Verbose "Skipping: $CandidatePath [Not Found]"
                     continue
                 } else {
