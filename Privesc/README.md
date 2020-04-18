@@ -1,3 +1,28 @@
+### Modifications in this Fork
+
+----
+
+*PowerUp* is a great script to quickly identify privilege escalation vulnerabilities on a Windows operating systems. However, while Windows changes it's internals from patch to patch, 
+*PowerUp* stayed static and was no longer maintained for a long period of time. This lead to some checks being not useful anymore and other checks were just missing by default.
+The following points summarize some of these problems:
+
+* The service checks of *PowerUp* rely on WMI access, which is not granted per default to low privileged user accounts.
+* The scheduled task checks rely on access to the ``C:\Windows\System32\tasks`` folder, which is not readable by low privileged user accounts.
+* There are no checks or functions for writable registry paths
+* The different check functions support only very basic error handling, making them hard to use for manual enumeration.
+
+The following changes were applied to get rid of the above mentioned problems:
+
+* TODO
+
+Furthermore, a *PowerUpLight.ps1* version was added. This version of *PowerUp* should be fully functional, but excludes all abuse related functions. This makes it possible
+to strip the more malicious stuff like base64 encoded malicious binaries that were shipped normally by default.
+
+
+### Original README.md Content:
+
+-----
+
 To install this module, drop the entire Privesc folder into one of your module directories. The default PowerShell module paths are listed in the $Env:PSModulePath environment variable.
 
 The default per-user module path is: "$Env:HomeDrive$Env:HOMEPATH\Documents\WindowsPowerShell\Modules"

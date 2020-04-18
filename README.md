@@ -1,3 +1,14 @@
+### About this Fork
+
+----
+
+This repository contains a fork of the famous *PowerSploit* framework. It was created to apply some improvements to the *PowerUp.ps1* script, but maybe also other changes
+will be added in future. For now, you can find a description of the applied modifications inside the *README.md* of the [Privesc Module](./Privesc).
+
+### Original README.md
+
+----
+
 ### PowerSploit is a collection of Microsoft PowerShell modules that can be used to aid penetration testers during all phases of an assessment. PowerSploit is comprised of the following modules and scripts:
 
 ## CodeExecution
