@@ -2011,7 +2011,7 @@ PowerUp.Service
 
         try {
             $Key = $_.OpenSubKey("Security")
-        } catch [System.Management.Automation.MethodException] {
+        } catch [System.Management.Automation.MethodException],[System.Management.Automation.MethodInvocationException] {
             Write-Verbose "Failure obtaining Security key for $ServiceName [Access Denied]"
             $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
             return $Service
@@ -4276,7 +4276,7 @@ PowerUp.ScheduledTask
             $Count = 0
             $ExecPath | Get-ModifiablePath | ForEach-Object {
                 $Count += 1
-                $Task | Add-Member Noteproperty "ModifiablePath$Count" $_
+                $Task | Add-Member Noteproperty "ModifiablePath$Count" $_ -Force
             }
             if( $Task.ModifiablePath1 -ne $Null ) {
                 $Task
