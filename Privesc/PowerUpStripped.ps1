@@ -382,7 +382,7 @@ function Get-ModifiablePath {
                 }
                 else {
                     $ParentPath = Split-Path -Path $TempPath -Parent  -ErrorAction SilentlyContinue
-                    if ($ParentPath -and (Test-Path -Path $ParentPath)) {
+                    if ($ParentPath -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) {
                         $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                     } else {
                         Write-Verbose "Skipping: $TempPath [Not Found]"
@@ -401,7 +401,7 @@ function Get-ModifiablePath {
                                 else {
                                     try {
                                         $ParentPath = (Split-Path -Path $TempPath -Parent -ErrorAction SilentlyContinue).Trim()
-                                        if ($ParentPath -and ($ParentPath -ne '') -and (Test-Path -Path $ParentPath  -ErrorAction SilentlyContinue)) {
+                                        if ($ParentPath -and ($ParentPath -ne '') -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) {
                                             $CandidatePaths += Resolve-Path -Path $ParentPath -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path
                                         }
                                     }
@@ -918,7 +918,7 @@ function Get-ServiceReg {
         $Service | Add-Member -MemberType NoteProperty -Name PathName -Value $PathName
         try {
             $Key = $_.OpenSubKey("Security")
-        } catch [System.Management.Automation.MethodException] {
+        } catch [System.Management.Automation.MethodException],[System.Management.Automation.MethodInvocationException] {
             Write-Verbose "Failure obtaining Security key for $ServiceName [Access Denied]"
             $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
             return $Service
@@ -951,7 +951,13 @@ function Get-ServiceApi {
     $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
     $QueryConfig = 0x00001
     $ReadControl = 0x20000
-    $GetServices.Invoke($null, $null) | ForEach-Object {
+    try {
+        $Services = $GetServices.Invoke($null, $null)
+    } catch [System.InvalidOperationException] {
+        Write-Verbose "Service enumeration via ServiceController: Failed. [Access Denied]"
+        return $null
+    }
+    $Services | ForEach-Object {
         $Service = New-Object PSObject
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.Name
         $Service | Add-Member -MemberType NoteProperty -Name ServiceName -Value $_.ServiceName
@@ -1681,7 +1687,7 @@ function Get-ModifiableReg {
             }
             if (-not (Test-Path -Path $CandidatePath -ErrorAction SilentlyContinue) ) {
                 $ParentPath = Split-Path -Path $CandidatePath -Parent  -ErrorAction SilentlyContinue
-                if (-not ($ParentPath -and (Test-Path -Path $ParentPath)) ) {
+                if (-not ($ParentPath -and (Test-Path -Path $ParentPath -ErrorAction SilentlyContinue)) ) {
                     Write-Verbose "Skipping: $CandidatePath [Not Found]"
                     continue
                 } else {
@@ -1927,7 +1933,7 @@ function Get-ModifiableScheduledTaskFile2 {
             $Count = 0
             $ExecPath | Get-ModifiablePath | ForEach-Object {
                 $Count += 1
-                $Task | Add-Member Noteproperty "ModifiablePath$Count" $_
+                $Task | Add-Member Noteproperty "ModifiablePath$Count" $_ -Force
             }
             if( $Task.ModifiablePath1 -ne $Null ) {
                 $Task
