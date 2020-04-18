@@ -1,3 +1,14 @@
+### About this Fork
+
+----
+
+This repository contains a fork of the famous *PowerSploit* framework. It was created to apply some improvements to the *PowerUp.ps1* script, but maybe also other changes
+will be added in future. For now, you can find a description of the applied modifications inside the *README.md* of the [Privesc Module](./Privesc).
+
+### Original README.md
+
+----
+
 ### PowerSploit is a collection of Microsoft PowerShell modules that can be used to aid penetration testers during all phases of an assessment. PowerSploit is comprised of the following modules and scripts:
 
 ## CodeExecution
@@ -36,7 +47,7 @@ Compresses, Base-64 encodes, and outputs generated code to load a managed dll in
 
 Encrypts text files/scripts.
 
-#### `Remove-Comments`
+#### `Remove-Comment`
 
 Strips comments and extra whitespace from a script. 
 
@@ -132,7 +143,7 @@ Displays Windows vault credential objects including cleartext web credentials.
 
 Generates a full-memory minidump of a process.
 
-#### 'Get-MicrophoneAudio'
+#### `Get-MicrophoneAudio`
 
 Records audio from system microphone and saves to disk
 
