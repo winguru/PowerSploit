@@ -2093,7 +2093,14 @@ PowerUp.Service
     $QueryConfig = 0x00001
     $ReadControl = 0x20000
 
-    $GetServices.Invoke($null, $null) | ForEach-Object {
+    try {
+        $Services = $GetServices.Invoke($null, $null)
+    } catch [System.InvalidOperationException] {
+        Write-Verbose "Service enumeration via ServiceController: Failed. [Access Denied]"
+        return $null
+    }
+
+    $Services | ForEach-Object {
 
         $Service = New-Object PSObject
         $Service | Add-Member -MemberType NoteProperty -Name Name -Value $_.Name
