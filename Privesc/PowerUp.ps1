@@ -3981,7 +3981,7 @@ Custom PSObject containing basic information of canidate registry key
         "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TeamViewer",
         "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TightVNC\Server",
         "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\RealVNC\vncserver",
-        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TigerVNC\WinVNC4",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TigerVNC\WinVNC4"
     )
 
     ForEach($Key in $RegistryKeys) {
