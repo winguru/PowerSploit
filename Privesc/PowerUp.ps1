@@ -4006,6 +4006,103 @@ Custom PSObject containing basic information of canidate registry key
 }
 
 
+function Get-RegistryPasswords {
+<#
+.SYNOPSIS
+
+Enumerates the HKLM:\Software hive for registry keys and values containing the text "pass" or "cred"
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause
+Required Dependencies: None
+
+.DESCRIPTION
+
+It is common for software to store passwords inside the registry. Some of these locations are well
+known and can be enumerated with Get-KnownRegistryPasswords. Others are not well known and need to
+be searched by enumerating all available keys.
+
+.PARAMETER IncludeMs
+
+Switch. Includes all registry keys that most likely belong to Microsoft (e.g. \Microsoft, \Classes)
+
+.EXAMPLE
+
+Get-RegistryPasswords
+
+Searches the HKLM:\Software hive for the term "pass" or "cred"
+
+.OUTPUTS
+
+PowerUp.RegestryKey
+
+Custom PSObject containing basic information of canidate registry key
+#>
+
+    [OutputType('PowerUp.RegistryKey')]
+    [CmdletBinding()]
+    Param(
+        [Switch]
+        $IncludeMs
+    )
+
+    $BaseKeys = Get-ChildItem Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE
+    if( -not $PSBoundParameters['IncludeMs'] ) {
+        $BaseKeys = $BaseKeys | Where-Object { ($_.PSChildName -ne "Microsoft") -and ($_.PSChildName -ne "Classes") -and ($_.PSChildName -ne "WOW6432Node") }
+    }
+
+    $BaseKeys32 = Get-ChildItem Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\WOW6432Node
+    if( -not $PSBoundParameters['IncludeMs'] ) {
+        $BaseKeys32 = $BaseKeys32 | Where-Object { ($_.PSChildName -ne "Microsoft") -and ($_.PSChildName -ne "Classes") }
+    }
+
+    $BaseKeys + $BaseKeys32 | ForEach-Object {
+
+        $ValueNames = $_.GetValueNames()
+        if( ($_.PSChildName -match "pass") -or ($_.PSChildName -match "cred") -or ($ValueNames -match "pass") -or ($ValueNames -match "cred") ) {
+
+            if( ($_.PSChildName -match "pass") -or ($_.PSChildName -match "cred") ) {
+                $Match = "$($_.PSChildName) [Key Name]"
+            } else {
+                $MatchValue = $ValueNames | Where-Object { ($_ -match "cred") -or ($_ -match "pass") }
+                $Match = "$MatchValue [Value Name]"
+            }
+
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'RegistryKey' $_.Name
+            $Out | Add-Member Noteproperty 'PSPath' $_.PSPath
+            $Out | Add-Member Noteproperty 'Properties' $_.GetValueNames()
+            $Out | Add-Member Noteproperty 'Subkeys' $_.GetSubKeyNames()
+            $Out | Add-Member Noteproperty 'Match' $Match
+            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryKey')
+            $Out
+        }
+    }
+
+    $BaseKeys + $BaseKeys32 | Get-ChildItem -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $ValueNames = $_.GetValueNames()
+        if( ($_.PSChildName -match "pass") -or ($_.PSChildName -match "cred") -or ($ValueNames -match "pass") -or ($ValueNames -match "cred") ) {
+
+            if( ($_.PSChildName -match "pass") -or ($_.PSChildName -match "cred") ) {
+                $Match = "$($_.PSChildName) [Key Name]"
+            } else {
+                $MatchValue = $ValueNames | Where-Object { ($_ -match "cred") -or ($_ -match "pass") }
+                $Match = "$MatchValue [Value Name]"
+            }
+
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'RegistryKey' $_.Name
+            $Out | Add-Member Noteproperty 'PSPath' $_.PSPath
+            $Out | Add-Member Noteproperty 'Properties' $_.GetValueNames()
+            $Out | Add-Member Noteproperty 'Subkeys' $_.GetSubKeyNames()
+            $Out | Add-Member Noteproperty 'Match' $Match
+            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryKey')
+            $Out
+        }
+    }
+}
+
+
 function Get-RegistryAutoLogon {
 <#
 .SYNOPSIS
