@@ -3980,9 +3980,8 @@ Custom PSObject containing basic information of canidate registry key
     $RegistryKeys = @(
         "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TeamViewer",
         "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TightVNC\Server",
-        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\RealVNC\vncserver",
-        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\TigerVNC\WinVNC4",
-        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\"
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\RealVNC\vncserver",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TigerVNC\WinVNC4",
     )
 
     ForEach($Key in $RegistryKeys) {
@@ -5603,6 +5602,10 @@ detailing any discovered issues.
         @{
             Type    = 'Known Registry Password Locations'
             Command = { Get-KnownRegistryPasswords }
+        },
+        @{
+            Type    = 'Password Strings in Registry'
+            Command = { Get-RegistryPasswords }
         },
         @{
             Type    = 'Modifiable Registry Autorun'
