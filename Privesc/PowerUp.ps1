@@ -3945,6 +3945,67 @@ $True if RegistryAlwaysInstallElevated is set, $False otherwise.
 }
 
 
+function Get-KnownRegistryPasswords {
+<#
+.SYNOPSIS
+
+Requests registry keys of software that is known to store credentials inside the registry.
+
+Author: Tobias Neitzel (@qtc-de)
+License: BSD 3-Clause
+Required Dependencies: None
+
+.DESCRIPTION
+
+It is common for software to store passwords inside the registry. Often these passwords are encrypted,
+but decryption keys are known. Popular examples are TeamViewer or VNC.
+
+.EXAMPLE
+
+Get-KnownRegistryPasswords
+
+Requests registry keys of software that is known to store credentials inside the registry.
+
+.OUTPUTS
+
+PowerUp.RegestryKey
+
+Custom PSObject containing basic information of canidate registry key
+#>
+
+    [OutputType('PowerUp.RegistryKey')]
+    [CmdletBinding()]
+    Param()
+
+    $RegistryKeys = @(
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TeamViewer",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TightVNC\Server",
+        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\RealVNC\vncserver",
+        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\TigerVNC\WinVNC4",
+        "Microsoft.PowerShell.Core\Registry::HKLM\\SOFTWARE\"
+    )
+
+    ForEach($Key in $RegistryKeys) {
+
+        try {
+            $Item = Get-Item $Key -ErrorAction Stop
+        } catch [System.Management.Automation.ItemNotFoundException] {
+            Write-Verbose "Skipping: $Key [Not Found]"
+            continue
+        }
+        if( $Item -ne $null ) {
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'RegistryKey' $Item.Name
+            $Out | Add-Member Noteproperty 'PSPath' $Item.PSPath
+            $Out | Add-Member Noteproperty 'Properties' $Item.GetValueNames()
+            $Out | Add-Member Noteproperty 'Subkeys' $Item.GetSubKeyNames()
+            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryKey')
+            $Out
+        }
+    }
+}
+
+
 function Get-RegistryAutoLogon {
 <#
 .SYNOPSIS
