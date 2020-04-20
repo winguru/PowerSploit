@@ -1792,6 +1792,98 @@ function Get-RegistryAlwaysInstallElevated {
     }
     $ErrorActionPreference = $OrigError
 }
+function Get-KnownRegistryPasswords {
+    [OutputType('PowerUp.RegistryKey')]
+    [CmdletBinding()]
+    Param()
+    $RegistryKeys = @(
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TeamViewer",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TightVNC\Server",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\RealVNC\vncserver",
+        "Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\TigerVNC\WinVNC4"
+    )
+    ForEach($Key in $RegistryKeys) {
+        try {
+            $Item = Get-Item $Key -ErrorAction Stop
+        } catch [System.Management.Automation.ItemNotFoundException] {
+            Write-Verbose "Skipping: $Key [Not Found]"
+            continue
+        }
+        if( $Item -ne $null ) {
+            $Out = New-Object PSObject
+            $Out | Add-Member Noteproperty 'RegistryKey' $Item.Name
+            $Out | Add-Member Noteproperty 'PSPath' $Item.PSPath
+            $Out | Add-Member Noteproperty 'Properties' $Item.GetValueNames()
+            $Out | Add-Member Noteproperty 'Subkeys' $Item.GetSubKeyNames()
+            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryKey')
+            $Out
+        }
+    }
+}
+function Find-RegistryString {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [OutputType('PowerUp.RegistryKey')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True)]
+        [PSObject[]]
+        $RegistryKeys,
+        [Parameter(Mandatory = $True)]
+        [String]
+        $LookFor
+    )
+    BEGIN {
+        $LookForArray = $LookFor -Split ","
+    }
+    PROCESS {
+        ForEach($Key in $RegistryKeys) {
+            $ValueNames = $Key.GetValueNames()
+            ForEach($Term in $LookForArray) {
+                if( ($Key.PSChildName -match $Term) -or ($ValueNames -match $Term) ) {
+                    $Out = New-Object PSObject
+                    $Out | Add-Member Noteproperty 'RegistryKey' $Key.Name
+                    $Out | Add-Member Noteproperty 'PSPath' $Key.PSPath
+                    $Out | Add-Member Noteproperty 'Properties' $Key.GetValueNames()
+                    $Out | Add-Member Noteproperty 'Subkeys' $Key.GetSubKeyNames()
+                    if( $Key.PSChildName -match $Term ) {
+                        $Match = "$($Key.PSChildName) [Key Name]"
+                        $Out | Add-Member Noteproperty 'Match' $Match
+                    } else {
+                        $MatchValues = $ValueNames | Where-Object { $_ -match $Term }
+                        $Match = "$MatchValues [Value Names]"
+                        $Out | Add-Member Noteproperty 'Match' $Match
+                        $Count = 0
+                        ForEach($MatchValue in $MatchValues) {
+                            $Count += 1
+                            $Out | Add-Member Noteproperty "MatchValue$Count" $Key.GetValue($MatchValue)
+                        }
+                    }
+                    $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryKey')
+                    $Out
+                    break
+                }
+            }
+        }
+    }
+}
+function Get-RegistryPasswords {
+    [OutputType('PowerUp.RegistryKey')]
+    [CmdletBinding()]
+    Param(
+        [Switch]
+        $IncludeMs
+    )
+    $BaseKeys = Get-ChildItem Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE
+    if( -not $PSBoundParameters['IncludeMs'] ) {
+        $BaseKeys = $BaseKeys | Where-Object { ($_.PSChildName -ne "Microsoft") -and ($_.PSChildName -ne "Classes") -and ($_.PSChildName -ne "WOW6432Node") }
+    }
+    $BaseKeys32 = Get-ChildItem Microsoft.PowerShell.Core\Registry::HKLM\SOFTWARE\WOW6432Node
+    if( -not $PSBoundParameters['IncludeMs'] ) {
+        $BaseKeys32 = $BaseKeys32 | Where-Object { ($_.PSChildName -ne "Microsoft") -and ($_.PSChildName -ne "Classes") }
+    }
+    $BaseKeys + $BaseKeys32 | Find-RegistryString -LookFor "pass,cred"
+    $BaseKeys + $BaseKeys32 | Get-ChildItem -Recurse -ErrorAction SilentlyContinue | Find-RegistryString -LookFor "pass,cred"
+}
 function Get-RegistryAutoLogon {
     [OutputType('PowerUp.RegistryAutoLogon')]
     [CmdletBinding()]
@@ -2488,6 +2580,14 @@ function Invoke-PrivescAudit {
         @{
             Type    = 'Registry Autologons'
             Command = { Get-RegistryAutoLogon }
+        },
+        @{
+            Type    = 'Known Registry Password Locations'
+            Command = { Get-KnownRegistryPasswords }
+        },
+        @{
+            Type    = 'Password Strings in Registry'
+            Command = { Get-RegistryPasswords }
         },
         @{
             Type    = 'Modifiable Registry Autorun'
