@@ -5458,6 +5458,10 @@ detailing any discovered issues.
             Command = { Get-RegistryAutoLogon }
         },
         @{
+            Type    = 'Known Registry Password Locations'
+            Command = { Get-KnownRegistryPasswords }
+        },
+        @{
             Type    = 'Modifiable Registry Autorun'
             Command = { Get-ModifiableRegistryAutoRun }
         },
