@@ -3533,7 +3533,7 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/
     $AltDefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultUserName -ErrorAction SilentlyContinue).AltDefaultUserName
     $AltDefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultPassword -ErrorAction SilentlyContinue).AltDefaultPassword
 
-    if ($DefaultUserName -or $AltDefaultUserName) {
+    if ($DefaultPassword -or $AltDefaultPassword) {
         $Out = New-Object PSObject
         $Out | Add-Member Noteproperty 'DefaultDomainName' $DefaultDomainName
         $Out | Add-Member Noteproperty 'DefaultUserName' $DefaultUserName
