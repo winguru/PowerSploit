@@ -3872,7 +3872,15 @@ a modifiable registry path.
     [CmdletBinding()]
     Param()
 
-    Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Services -Recurse -ErrorAction SilentlyContinue | Get-ModifiableReg
+    $BlackList = @(
+        "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\ASP.NET_4.0.30319\Names",
+        "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings",
+        "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\AudioGateway",
+        "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\BTAGService\Parameters\Settings\HandsFree",
+        "Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\vds\Alignment"
+    )
+
+    Get-ChildItem HKLM:\SYSTEM\CurrentControlSet\Services -Recurse -ErrorAction SilentlyContinue | Where-Object {-not ($BlackList -contains $_.PSPath)} | Get-ModifiableReg
 }
 
 
