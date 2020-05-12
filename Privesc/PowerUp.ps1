@@ -2380,6 +2380,10 @@ PowerUp.Service
         $Services
     )
 
+    BEGIN {
+        $AlreadyChecked = @()
+    }
+
     PROCESS {
 
         ForEach( $Service in $Services ) {
@@ -2397,10 +2401,41 @@ PowerUp.Service
                 $count += 1
             }
 
+            if( $ServicePath[0] -eq '"' ) {
+                $ServicePath = $ServicePath.split('"')[1]
+            }
+            $LoopCount = 0
+            $ParentPaths = @()
+            $Parent = Split-Path -Path $ServicePath -Parent
+
+            while( ($Parent -ne 'C:\') -and ($AlreadyChecked -notcontains $Parent) ) {
+                $ParentPaths += $Parent
+                $Parent = Split-Path -Path $Parent -Parent
+                if( $LoopCount -gt 15 ) {
+                    break
+                }
+                $LoopCount += 1
+            }
+
+            $Modifiable = @()
+            $ParentPaths | Get-ModifiablePath | ForEach-Object {
+                $Service | Add-Member -MemberType NoteProperty -Name "ModifiableFile$count" -Value "`"$($_.ModifiablePath)`"" -Force
+                $Modifiable += $_.ModifiablePath
+                $count += 1
+            }
+            $AlreadyChecked += $ParentPaths | Where-Object { $Modifiable -notcontains $_ }
+
+            if( -not (Test-Path -Path $ServicePath -ErrorAction SilentlyContinue) ) {
+                $Service | Add-Member -MemberType NoteProperty -Name "MissingPath" -Value "`"$ServicePath`"" -Force
+                if( $count -eq 0 ) {
+                    count += 1
+                }
+            }
+
             if( $count -gt 1 ) { 
                 $Service.PSObject.TypeNames.Insert(0, 'PowerUp.Service')
                 $Service 
-            }
+            }  
         }
     }
 }
