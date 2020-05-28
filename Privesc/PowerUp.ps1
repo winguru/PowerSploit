@@ -2198,6 +2198,10 @@ PowerUp.Service
             $ParentPaths = @()
             $Parent = Split-Path -Path $ServicePath -Parent
 
+            if( $Parent -eq "" ) {
+                continue
+            }
+
             while( ($Parent -ne 'C:\') -and ($AlreadyChecked -notcontains $Parent) ) {
                 $ParentPaths += $Parent
                 $Parent = Split-Path -Path $Parent -Parent
