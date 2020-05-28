@@ -124,6 +124,8 @@ Optional Dependencies: None
     Get-ModifiableRegistryService     (new)            -   enumerates the HKLM:\SYSTEM\CurrentControlSet\Services registry hive for writable registry keys
     Get-RegistryAlwaysInstallElevated (not modified)   -   checks if the AlwaysInstallElevated registry key is set
     Get-RegistryAutoLogon             (not modified)   -   checks for Autologon credentials in the registry
+    Get-KnownRegistryPasswords        (new)            -   checks for known registry locations storing passwords (VNC, Teamviewer, ...)
+    Get-RegistryPasswords             (new)            -   search for password strings (pass, cred) inside the SOFTWARE registry
 
 ### Miscellaneous Checks:
     Get-ApplicationHost               (not modified)   -   checks for encrypted application pool and virtual directory passwords
@@ -138,6 +140,7 @@ Optional Dependencies: None
 ### Other Helpers/Meta-Functions:
     Invoke-WScriptUACBypass           (not modified)   -   performs the bypass UAC attack by abusing the lack of an embedded manifest in wscript.exe
     Invoke-PrivescAudit               (modified)       -   runs all current escalation checks and returns a report (formerly Invoke-AllChecks)
+    Find-RegistryString               (new)            -   search for specific strings inside the registry
     Get-ModifiablePath                (modified)       -   tokenizes an input string and returns the files in it the current user can modify
     Get-TokenInformation              (not modified)   -   returns token groups or privileges for a passed process/thread token
     Write-UserAddMSI                  (not modified)   -   write out a MSI installer that prompts for a user to be added
