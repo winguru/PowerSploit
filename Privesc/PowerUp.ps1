@@ -5195,19 +5195,22 @@ detailing any discovered issues.
         @{
             Type    = 'Unquoted Service Paths'
             Command = { $Services | Get-UnquotedService }
+            AbuseScript = { "Write-Exe -Path '<PATH>' -Command '<CMD>'" }
         },
         @{
             Type    = 'Modifiable Service Files'
             Command = { $Services | Get-ModifiableServiceFile }
+            AbuseScript = { "Write-Exe -Path '<PATH>' -Command '<CMD>'" }
         },
         @{
             Type    = 'Modifiable Services'
             Command = { $Services | Test-ServiceDaclPermission }
+            AbuseScript = { "Set-ServiceBinaryPath -Name '$($_.ServiceName)' -Path '<PATH>'" }
         },
         @{
             Type        = '%PATH% .dll Hijacks'
             Command     = { Find-PathDLLHijack }
-            AbuseScript = { "Write-HijackDll -DllPath '$($_.ModifiablePath)\wlbsctrl.dll'" }
+            AbuseScript = { "Write-Dll -DllPath '$($_.ModifiablePath)\wlbsctrl.dll' -Command '<CMD>'" }
         },
         @{
             Type        = 'AlwaysInstallElevated Registry Key'
