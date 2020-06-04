@@ -26,8 +26,6 @@ The following changes were applied to get rid of the above mentioned problems (f
   tasks. However, this folder is no longer readable for low privileged user accounts. In this fork, *PowerUp* uses the ``schtasks.exe`` to enumerate available scheduled tasks
   (I know, this is lazy. Maybe we switch to COM enumeration someday) and returns the results as ``PowerUp.ScheduledTask`` objects. The new ``Get-ModifiableScheduledTaskFile2`` function
   operates on these objects to find scheduled tasks with weak file permissions on their executable paths.
-* A *PowerUpLight.ps1* version was added. This version of *PowerUp* should be fully functional, but excludes all abuse related functions. This makes it possible
-  to strip the more malicious stuff like base64 encoded malicious binaries. This could be useful to prevent detection by AV solutions.
 
 Compared to other popular privilege escalation enumeration tools, *PowerUp* still lacks a lot of stuff. However, I really like it because it is overviewable and can be
 great incorporated into manually enumeration. When I find the time, I will add some checks to improve the automated enumeration capabilities and I'm happy for anyone
@@ -49,6 +47,28 @@ To see the commands imported, type `Get-Command -Module Privesc`
 For help on each individual command, Get-Help is your friend.
 
 Note: The tools contained within this module were all designed such that they can be run individually. Including them in a module simply lends itself to increased portability.
+
+
+### PowerShell v2 Compatibility
+
+----
+
+During the changes no attention was paid on PowerShell v2 compatibility and certain functions probably do not work with PowerShell v2. Following functions are known to not
+work anymore with PowerShell version 2:
+
+* ``Set-ServiceBinaryPath`` and ``Set-ServiceUser`` - These functions rely on the Windows API call ``ChangeServiceConfig`` that is imported at the end of the PowerUp script. The original import was:
+  ```powershell
+  (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode)
+  ```
+  This worked fine for ``Set-ServiceBinaryPath``, but to introduce the ``Set-ServiceUser`` function, it was changed to:
+  ```powershell
+  (func advapi32 ChangeServiceConfig ([Bool]) @([IntPtr], [UInt32], [UInt32], [UInt32], [String], [IntPtr], [IntPtr], [IntPtr], [String], [IntPtr], [IntPtr]) -SetLastError -Charset Unicode)
+  ```
+  Since there are now two ``String`` parameters inside the definition, it is required to pass the ``[NullString]::Value`` if only one of these properties should change. The ``[NullString]`` type
+  was first introduced in Powershell version 3 and therfore is not compatible to Powershell version 2. If you require to use on of these functions with Powershell version 2, just change the import
+  of ``ChangeServiceConfig`` to take only one string or add the desired binPath/startName manually into the function call.
+
+In future, we may investigate all compatibility issues and release a Powershell version 2 compatible version.
 
 
 ### Usage:
@@ -75,23 +95,26 @@ Optional Dependencies: None
     Get-ProcessTokenPrivilege         (not modified)   -   returns all privileges for the current (or specified) process ID
 
 ### Service Enumeration/Abuse:
-    Install-ServiceBinary             (not modified)   -   replaces a service binary with one that adds a local admin or executes a custom command
-    Invoke-ServiceAbuse               (not modified)   -   modifies a vulnerable service to create a local admin or execute a custom command
+    Install-ServiceBinary             (removed)        -   was removed from the script
+    Invoke-ServiceAbuse               (removed)        -   was removed from the script
     Get-ModifiableServiceFile         (modified)       -   returns services where the current user can write to the service binary path or its config
     Get-UnquotedService               (modified)       -   returns services with unquoted paths that also have a space in the name
     Get-ServiceApi                    (new)            -   enumerate services using Advapi32 and the Service Control Manager (outpus PowerUp.Service objects)
     Get-ServiceReg                    (new)            -   enumerate services using the HKLM:\SYSTEM\CurrentControlSet\Services registry hive (outpus PowerUp.Service objects)
     Get-ServiceWmi                    (new)            -   enumerate services using WMI (outpus PowerUp.Service objects)
-    Restore-ServiceBinary             (not modified)   -   restores a replaced service binary with the original executable
-    Set-ServiceBinaryPath             (not modified)   -   sets the binary path for a service to a specified value
+    Restore-ServiceBinary             (removed)        -   was removed from the script
+    Set-ServiceBinaryPath             (modified)       -   sets the binary path for a service to a specified value
+    Set-ServiceUser                   (new)            -   sets the service user for a service to a specified value
     Show-ServicePermission            (new)            -   Transform access permissions of a PowerUp.Service object into a human readable format
     Test-ServiceDaclPermission        (modified)       -   tests one or more passed services against a given permission set
-    Write-ServiceBinary               (not modified)   -   writes out a patched C# service binary that adds a local admin or executes a custom command
+    Write-ServiceBinary               (removed)        -   was removed from the script
+    Write-Exe                         (new)            -   write a precompiled executable onto disk that executes a specified .bat file
 
 ### DLL Hijacking:
     Find-PathDLLHijack                (not modified)   -   finds service %PATH% DLL hijacking opportunities
     Find-ProcessDLLHijack             (not modified)   -   finds potential DLL hijacking opportunities for currently running processes
-    Write-HijackDll                   (not modified)   -   writes out a hijackable DLL
+    Write-HijackDll                   (removed)        -   was removed from the script
+    Write-Dll                         (new)            -   replacement for Write-HijackDll. Writes a precompiled DLL onto the disk that executes a specified .bat file
     
 ### Registry Checks:
     Get-ModifiableReg                 (new)            -   returns registry paths where the current user has write access
@@ -99,6 +122,8 @@ Optional Dependencies: None
     Get-ModifiableRegistryService     (new)            -   enumerates the HKLM:\SYSTEM\CurrentControlSet\Services registry hive for writable registry keys
     Get-RegistryAlwaysInstallElevated (not modified)   -   checks if the AlwaysInstallElevated registry key is set
     Get-RegistryAutoLogon             (not modified)   -   checks for Autologon credentials in the registry
+    Get-KnownRegistryPasswords        (new)            -   checks for known registry locations storing passwords (VNC, Teamviewer, ...)
+    Get-RegistryPasswords             (new)            -   search for password strings (pass, cred) inside the SOFTWARE registry
 
 ### Miscellaneous Checks:
     Get-ApplicationHost               (not modified)   -   checks for encrypted application pool and virtual directory passwords
@@ -113,6 +138,7 @@ Optional Dependencies: None
 ### Other Helpers/Meta-Functions:
     Invoke-WScriptUACBypass           (not modified)   -   performs the bypass UAC attack by abusing the lack of an embedded manifest in wscript.exe
     Invoke-PrivescAudit               (modified)       -   runs all current escalation checks and returns a report (formerly Invoke-AllChecks)
+    Find-RegistryString               (new)            -   search for specific strings inside the registry
     Get-ModifiablePath                (modified)       -   tokenizes an input string and returns the files in it the current user can modify
     Get-TokenInformation              (not modified)   -   returns token groups or privileges for a passed process/thread token
     Write-UserAddMSI                  (not modified)   -   write out a MSI installer that prompts for a user to be added
