@@ -26,8 +26,6 @@ The following changes were applied to get rid of the above mentioned problems (f
   tasks. However, this folder is no longer readable for low privileged user accounts. In this fork, *PowerUp* uses the ``schtasks.exe`` to enumerate available scheduled tasks
   (I know, this is lazy. Maybe we switch to COM enumeration someday) and returns the results as ``PowerUp.ScheduledTask`` objects. The new ``Get-ModifiableScheduledTaskFile2`` function
   operates on these objects to find scheduled tasks with weak file permissions on their executable paths.
-* A *PowerUpLight.ps1* version was added. This version of *PowerUp* should be fully functional, but excludes all abuse related functions. This makes it possible
-  to strip the more malicious stuff like base64 encoded malicious binaries. This could be useful to prevent detection by AV solutions.
 
 Compared to other popular privilege escalation enumeration tools, *PowerUp* still lacks a lot of stuff. However, I really like it because it is overviewable and can be
 great incorporated into manually enumeration. When I find the time, I will add some checks to improve the automated enumeration capabilities and I'm happy for anyone
