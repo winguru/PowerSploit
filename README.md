@@ -1,7 +1,13 @@
-### This is a fork of PowerSploit
+### About this Fork
 
-Because unfortunately, upstream is not getting the attention it deserves.
-Dev has been merged into master, so consider yourself a beta tester.
+----
+
+This repository contains a fork of the famous *PowerSploit* framework. It was created to apply some improvements to the *PowerUp.ps1* script, but maybe also other changes
+will be added in future. For now, you can find a description of the applied modifications inside the *README.md* of the [Privesc Module](./Privesc).
+
+### Original README.md
+
+----
 
 ### PowerSploit is a collection of Microsoft PowerShell modules that can be used to aid penetration testers during all phases of an assessment. PowerSploit is comprised of the following modules and scripts:
 
@@ -68,10 +74,6 @@ Installs a security support provider (SSP) dll.
 #### `Get-SecurityPackages`
 
 Enumerates all loaded security packages (SSPs).
-
-#### `Invoke-RIDHijacking`
-
-Sets a RID value to a local account to spoof another account privileges.
 
 ## AntivirusBypass
 
