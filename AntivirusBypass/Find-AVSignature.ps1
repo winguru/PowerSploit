@@ -5,11 +5,11 @@ function Find-AVSignature
 
 Locate tiny AV signatures.
 
-PowerSploit Function: Find-AVSignature  
-Authors: Chris Campbell (@obscuresec) & Matt Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: None  
-Optional Dependencies: None  
+PowerSploit Function: Find-AVSignature
+Authors: Chris Campbell (@obscuresec) & Matt Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 

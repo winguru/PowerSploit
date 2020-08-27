@@ -5,11 +5,11 @@ function Invoke-Portscan
 
 Simple portscan module
 
-PowerSploit Function: Invoke-Portscan  
-Author: Rich Lundeen (http://webstersProdigy.net)  
-License: BSD 3-Clause  
-Required Dependencies: None  
-Optional Dependencies: None  
+PowerSploit Function: Invoke-Portscan
+Author: Rich Lundeen (http://webstersProdigy.net)
+License: BSD 3-Clause
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -323,7 +323,7 @@ http://webstersprodigy.net
                 {
 
                 $iHostPart1 = ($iHost.Split("-"))[0]
-                $iHostPart2 = ($iHost.Split("-"))[1]       
+                $iHostPart2 = ($iHost.Split("-"))[1]
 
                 $LowerBound = $iHostPart1.Split(".")
                 $UpperBound = $iHostPart2.Split(".")
@@ -349,11 +349,11 @@ http://webstersprodigy.net
                             }
                             else
                             {
-        
+
                                 $Max = 254
                                 if(($i -ne 0) -and ($ControlArray[$i-1] -eq 1))
                                 {
-                                    $Max = $UpperBoundInt[$i]   
+                                    $Max = $UpperBoundInt[$i]
                                 }
 
                                 if(($i -ne 3) -and ($CurrentIP[$i+1] -eq 254))
@@ -375,7 +375,7 @@ http://webstersprodigy.net
                             }
                         }
                     }
-  
+
                 }
                 else
                 {

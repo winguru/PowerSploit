@@ -5,10 +5,10 @@ function Get-ComputerDetail
 
 This script is used to get useful information from a computer.
 
-Function: Get-ComputerDetail  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Get-ComputerDetail
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -22,7 +22,7 @@ This script is used to get useful information from a computer. Currently, the sc
 .PARAMETER ToString
 
 Switch: Outputs the data as text instead of objects, good if you are using this script through a backdoor.
-	
+
 .EXAMPLE
 
 Get-ComputerDetail
@@ -96,10 +96,10 @@ Retrieve the unique 4648 logon events. This will often find cases where a user i
 the account that RDP was launched with and the account name of the account being used to connect to the remote computer. This is useful
 for identifying normal authenticaiton patterns. Other actions that will trigger this include any runas action.
 
-Function: Find-4648Logon  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Find-4648Logon
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -224,10 +224,10 @@ function Find-4624Logon
 Find all unique 4624 Logon events to the server. This will tell you who is logging in and how. You can use this to figure out what accounts do
 network logons in to the server, what accounts RDP in, what accounts log in locally, etc...
 
-Function: Find-4624Logon  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Find-4624Logon
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -369,10 +369,10 @@ function Find-AppLockerLog
 
 Look through the AppLocker logs to find processes that get run on the server. You can then backdoor these exe's (or figure out what they normally run).
 
-Function: Find-AppLockerLog  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Find-AppLockerLog
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -435,10 +435,10 @@ Function Find-PSScriptsInPSAppLog
 Go through the PowerShell operational log to find scripts that run (by looking for ExecutionPipeline logs eventID 4100 in PowerShell app log).
 You can then backdoor these scripts or do other malicious things.
 
-Function: Find-AppLockerLog  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Find-AppLockerLog
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 
@@ -515,10 +515,10 @@ Function Find-RDPClientConnection
 Search the registry to find saved RDP client connections. This shows you what connections an RDP client has remembered, indicating what servers the user
 usually RDP's to.
 
-Function: Find-RDPClientConnection  
-Author: Joe Bialek, Twitter: @JosephBialek  
-Required Dependencies: None  
-Optional Dependencies: None  
+Function: Find-RDPClientConnection
+Author: Joe Bialek, Twitter: @JosephBialek
+Required Dependencies: None
+Optional Dependencies: None
 
 .DESCRIPTION
 

@@ -1,4 +1,7 @@
-## This project is no longer supported
+### This is a fork of PowerSploit
+
+Because unfortunately, upstream is not getting the attention it deserves.
+Dev has been merged into master, so consider yourself a beta tester.
 
 ### PowerSploit is a collection of Microsoft PowerShell modules that can be used to aid penetration testers during all phases of an assessment. PowerSploit is comprised of the following modules and scripts:
 
@@ -65,6 +68,10 @@ Installs a security support provider (SSP) dll.
 #### `Get-SecurityPackages`
 
 Enumerates all loaded security packages (SSPs).
+
+#### `Invoke-RIDHijacking`
+
+Sets a RID value to a local account to spoof another account privileges.
 
 ## AntivirusBypass
 

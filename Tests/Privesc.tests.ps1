@@ -37,7 +37,7 @@ Describe 'Get-ModifiablePath' {
 
         try {
             $Output = Get-ModifiablePath -Path $FilePath | Select-Object -First 1
-            
+
             if ($Output.PSObject.Properties.Name -notcontains 'ModifiablePath') {
                 Throw "Get-ModifiablePath result doesn't contain 'ModifiablePath' field."
             }
@@ -89,7 +89,7 @@ Describe 'Get-ModifiablePath' {
         $Null | Out-File -FilePath $FilePath -Force
 
         $CmdPath = "'C:\Windows\System32\nonexistent.exe' -i '$FilePath'"
-        
+
         try {
             $Output = Get-ModifiablePath -Path $FilePath | Select-Object -First 1
             $Output.ModifiablePath | Should Be $FilePath
@@ -385,7 +385,7 @@ Describe 'Set-ServiceBinaryPath' {
 
         $ServiceDetails = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'"
         $ServiceDetails.PathName | Should be $ServicePath
-        
+
         sc.exe delete $ServiceName | Should Match 'SUCCESS'
     }
 
@@ -397,10 +397,10 @@ Describe 'Set-ServiceBinaryPath' {
 
         $Result = Get-Service $ServiceName | Set-ServiceBinaryPath -Path $ServicePath
         $Result | Should Be $True
-        
+
         $ServiceDetails = Get-WmiObject -Class win32_service -Filter "Name='$ServiceName'"
         $ServiceDetails.PathName | Should be $ServicePath
-        
+
         sc.exe delete $ServiceName | Should Match 'SUCCESS'
     }
 }
@@ -434,7 +434,7 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should succeed with an existing service.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
 
@@ -447,10 +447,10 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should succeed with an existing service.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
-        
+
         $Result = Test-ServiceDaclPermission -Name $ServiceName
         $Result | Should Not BeNullOrEmpty
 
@@ -460,7 +460,7 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should succeed with a permission parameter.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
 
@@ -473,7 +473,7 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should succeed with a permission set parameter.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
 
@@ -486,7 +486,7 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should accept a service name as a string on the pipeline.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
 
@@ -499,7 +499,7 @@ Describe 'Test-ServiceDaclPermission' {
     It 'Should accept a service object on the pipeline.' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
 
@@ -513,32 +513,32 @@ Describe 'Test-ServiceDaclPermission' {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
         $UserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
-        
+
         sc.exe sdset $ServiceName "D:(A;;CCDCSWRPWPDTLOCRSDRCWDWO;;;$UserSid)" | Should Match 'SUCCESS'
-        
+
         {Test-ServiceDaclPermission -Name $ServiceName} | Should Throw
 
         sc.exe delete $ServiceName | Should Match 'SUCCESS'
     }
-    
+
     It "Should succeed with for an existing service due to sufficient specific DACL permissions." {
         $ServiceName = Get-RandomName
         $ServicePath = 'C:\Program Files\service.exe'
         $UserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.value
-        
+
         sc.exe create $ServiceName binPath= $ServicePath | Should Match 'SUCCESS'
         Start-Sleep -Seconds 1
-        
+
         sc.exe sdset $ServiceName "D:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;$UserSid)" | Should Match 'SUCCESS'
 
         $Result = Test-ServiceDaclPermission -Name $ServiceName
         $Result | Should Not BeNullOrEmpty
 
         sc.exe delete $ServiceName | Should Match 'SUCCESS'
-    } 
+    }
 }
 
 ########################################################
@@ -794,7 +794,7 @@ Describe 'Invoke-ServiceAbuse' {
 
     It 'Should accept a credential object.' {
         $Username = 'PowerUp123'
-        $Password = ConvertTo-SecureString 'PASSword123!' -AsPlaintext -Force 
+        $Password = ConvertTo-SecureString 'PASSword123!' -AsPlaintext -Force
         $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Username, $Password
 
         $Output = Invoke-ServiceAbuse -ServiceName 'PowerUpService' -Credential $Credential
@@ -902,7 +902,7 @@ Describe 'Install-ServiceBinary' {
 
     It 'User should not be created for a non-existent service.' {
         {Install-ServiceBinary -ServiceName "NonExistentService456"} | Should Throw
-        
+
         if ( ($(net localgroup Administrators) -match 'john')) {
             Throw "Local user 'john' should not have been created for non-existent service."
         }
@@ -929,7 +929,7 @@ Describe 'Install-ServiceBinary' {
 
     It 'Should accept a credential object.' {
         $Username = 'PowerUp123'
-        $Password = ConvertTo-SecureString 'PASSword123!' -AsPlaintext -Force 
+        $Password = ConvertTo-SecureString 'PASSword123!' -AsPlaintext -Force
         $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Username, $Password
 
         $Output = Install-ServiceBinary -ServiceName 'PowerUpService' -Credential $Credential
@@ -975,7 +975,7 @@ Describe 'Install-ServiceBinary' {
             if ( -not ($(net user) -match "testing")) {
                 Throw "Custom command failed."
             }
-        
+
             $Output = Restore-ServiceBinary -ServiceName PowerUpService
             "$(Get-Location)\powerup.exe.bak" | Should Not Exist
         }
@@ -1077,7 +1077,7 @@ Describe 'Write-HijackDll' {
     It 'Should write a .dll that executes a custom command.' {
         try {
             Write-HijackDll -DllPath "$(Get-Location)\powerup.dll" -Command 'net user testing Password123! /add'
-            
+
             "$(Get-Location)\powerup.dll" | Should Exist
             "$(Get-Location)\debug.bat" | Should Exist
         }
@@ -1265,7 +1265,7 @@ Describe 'Get-SiteListPassword' {
     It 'Should correctly find and parse a SiteList.xml file.' {
 
         $Credentials = Get-SiteListPassword
-        
+
         $Credentials | Where-Object {$_.Name -eq 'McAfeeHttp'} | ForEach-Object {
             # HTTP site
             $_.Enabled | Should Be '1'
@@ -1274,9 +1274,9 @@ Describe 'Get-SiteListPassword' {
             $_.EncPassword | Should Be 'jWbTyS7BL1Hj7PkO5Di/QhhYmcGj5cOoZ2OkDTrFXsR/abAFPM9B3Q=='
             $_.DecPassword | Should Be 'MyStrongPassword!'
             $_.UserName | Should BeNullOrEmpty
-            $_.DomainName | Should BeNullOrEmpty            
-        } 
-        
+            $_.DomainName | Should BeNullOrEmpty
+        }
+
         $Credentials | Where-Object {$_.Name -eq 'Paris'} | ForEach-Object {
             # UNC site with unencrypted password
             $_.Enabled | Should Be '1'
@@ -1301,9 +1301,9 @@ Describe 'Get-SiteListPassword' {
     }
 
     It 'Should correctly parse a SiteList.xml on a specified path.' {
-        
+
         $Credentials = Get-SiteListPassword -Path "${Home}\SiteList.xml"
-        
+
         $Credentials | Where-Object {$_.Name -eq 'McAfeeHttp'} | ForEach-Object {
             # HTTP site
             $_.Enabled | Should Be '1'
@@ -1312,8 +1312,8 @@ Describe 'Get-SiteListPassword' {
             $_.EncPassword | Should Be 'jWbTyS7BL1Hj7PkO5Di/QhhYmcGj5cOoZ2OkDTrFXsR/abAFPM9B3Q=='
             $_.DecPassword | Should Be 'MyStrongPassword!'
             $_.UserName | Should BeNullOrEmpty
-            $_.DomainName | Should BeNullOrEmpty            
-        } 
+            $_.DomainName | Should BeNullOrEmpty
+        }
 
         $Credentials | Where-Object {$_.Name -eq 'Paris'} | ForEach-Object {
             # UNC site with unencrypted password

@@ -8,13 +8,13 @@ Remove-Module [E]xfiltration
 Import-Module $ModuleManifest -Force -ErrorAction Stop
 
 Describe 'Get-Keystrokes' {
-    
+
     if (Test-Path "$($env:TEMP)\key.log") { Remove-Item -Force "$($env:TEMP)\key.log" }
     $WindowTitle = (Get-Process -Id $PID).MainWindowTitle
-    
+
     $Shell = New-Object -ComObject wscript.shell
     $Shell.AppActivate($WindowTitle)
-    
+
     $KeyLogger = Get-Keystrokes -PassThru
     Start-Sleep -Seconds 1
 
@@ -22,7 +22,7 @@ Describe 'Get-Keystrokes' {
     $KeyLogger.Dispose()
 
     It 'Should output to file' { Test-Path "$($env:TEMP)\key.log" | Should Be $true }
-    
+
     $KeyObjects = Get-Content -Path "$($env:TEMP)\key.log" | ConvertFrom-Csv
 
     It 'Should log keystrokes' {
@@ -40,10 +40,10 @@ Describe 'Get-Keystrokes' {
     }
 
     It 'Should stop logging after timeout' {
-        
+
         $Timeout = 0.05
         $KeyLogger = Get-Keystrokes -Timeout $Timeout -PassThru
-        
+
         Start-Sleep -Seconds 4
 
         $KeyLogger.Runspace.RunspaceAvailability | Should Be 'Available'
@@ -58,7 +58,7 @@ Describe "Get-MicrophoneAudio" {
 	$RecordPath = "$env:TEMP\test_record.wav"
 	$RecordLen = 2
 	Context 'Successful Recording' {
-		BeforeEach { 
+		BeforeEach {
 			#Ensure the recording as been removed prior to testing
 			Remove-Item -Path $RecordPath -ErrorAction SilentlyContinue
 		}
