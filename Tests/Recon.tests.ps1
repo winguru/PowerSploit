@@ -26,7 +26,7 @@ Describe 'Export-PowerViewCSV' {
     It 'Should Not Throw and should produce .csv output.' {
         {Get-Process | Export-PowerViewCSV -OutFile process_test.csv} | Should Not Throw
         '.\process_test.csv' | Should Exist
-        Remove-Item -Force .\process_test.csv        
+        Remove-Item -Force .\process_test.csv
     }
 }
 
@@ -63,7 +63,7 @@ Describe 'Get-Proxy' {
     }
     It 'Should accept -ComputerName argument' {
         {Get-Proxy -ComputerName $env:COMPUTERNAME} | Should Not Throw
-    }   
+    }
 }
 
 
@@ -95,12 +95,12 @@ Describe 'Get-NameField' {
         if ( (Get-NameField -Object $Object) -ne 'testing2') {
             Throw "'name' field Not parsed correctly"
         }
-    } 
+    }
     It 'Should handle plaintext strings' {
         if ( (Get-NameField -Object 'testing3') -ne 'testing3') {
             Throw 'Plaintext string Not parsed correctly'
         }
-    } 
+    }
     It 'Should accept pipeline input' {
         $Object = New-Object -TypeName PSObject -Property @{'dnshostname' = 'testing4'}
         if ( ($Object | Get-NameField) -ne 'testing4') {
@@ -181,7 +181,7 @@ Describe "Get-NetLoggedon" {
     It "Should accept IP -ComputerName argument" {
         if ( (Get-NetLoggedon -ComputerName $LocalIP | Measure-Object).count -lt 1) {
             Throw "Incorrect loggedon results returned"
-        }        
+        }
     }
     It "Should accept pipeline input" {
         if ( ( "$env:computername" | Get-NetLoggedon | Measure-Object).count -lt 1) {
@@ -463,7 +463,7 @@ Describe "Invoke-FileFinder" {
     }
     try {
         It "Should accept -ComputerFile argument" {
-            "$env:computername","$env:computername" | Out-File -Encoding ASCII targets.txt        
+            "$env:computername","$env:computername" | Out-File -Encoding ASCII targets.txt
             {Invoke-FileFinder -ComputerFile ".\targets.txt"} | Should Not Throw
         }
     }

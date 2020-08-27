@@ -41,7 +41,7 @@ function New-VolumeShadowCopy
 
 .PARAMETER Volume
 
-    Volume used for the shadow copy. This volume is sometimes referred to as the original volume. 
+    Volume used for the shadow copy. This volume is sometimes referred to as the original volume.
     The Volume parameter can be specified as a volume drive letter, mount point, or volume globally unique identifier (GUID) name.
 
 .PARAMETER Context
@@ -262,7 +262,7 @@ function Mount-VolumeShadowCopy
         foreach ($Volume in $DevicePath)
         {
             $Volume -match '^\\\\\?\\GLOBALROOT\\Device\\(?<LinkName>HarddiskVolumeShadowCopy[0-9]{1,3})$' | Out-Null
-            
+
             $LinkPath = Join-Path $Path $Matches.LinkName
 
             if (Test-Path $LinkPath)
